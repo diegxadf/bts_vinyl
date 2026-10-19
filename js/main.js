@@ -1139,7 +1139,7 @@ const nextOrder = () => albums.reduce((m, a) => Math.max(m, a.order ?? 0), -1) +
 let pkFilter = 'albums';
 function openModal(m) { m.hidden = false; requestAnimationFrame(() => m.classList.add('open')); }
 function closeModal(m) { m.classList.remove('open'); setTimeout(() => { if (!m.classList.contains('open')) m.hidden = true; }, 320); }
-const owned = (it) => albums.some((x) => x.itunesId === it.id || catalog.norm(x.title) === catalog.norm(it.title));
+const owned = (it) => albums.some((x) => x.itunesId === it.id || catalog.releaseKey(x.title) === catalog.releaseKey(it.title));
 const cleanName = (t) => t.replace(/\s*-\s*(Single|EP)$/i, '');
 
 async function renderPicker(query) {
@@ -1152,7 +1152,7 @@ async function renderPicker(query) {
       all = await catalog.btsAlbums();
       const seen = new Set();
       list = all.filter((a) => (pkFilter === 'singles') === catalog.isSingle(a)).filter((a) => {
-        const k = catalog.norm(a.title);
+        const k = catalog.releaseKey(a.title);
         if (seen.has(k)) return false;
         seen.add(k);
         return true;
@@ -1173,7 +1173,7 @@ async function renderPicker(query) {
     b.querySelector('.rt').textContent = cleanName(it.title);
     b.querySelector('.rm').textContent = have ? '✓ En tu colección' : `${query ? it.artist + ' · ' : ''}${it.year} · ${it.count} canc.`;
     // en la discografía, si una edición no trae canciones se prueba otra con el mismo nombre
-    const editions = query ? [it] : [it, ...all.filter((x) => x !== it && catalog.norm(x.title) === catalog.norm(it.title))];
+    const editions = query ? [it] : [it, ...all.filter((x) => x !== it && catalog.releaseKey(x.title) === catalog.releaseKey(it.title))];
     b.onclick = () => (have ? toast('Ya está en tu colección.') : addFromCatalog(it, editions, b));
     box.appendChild(b);
   });

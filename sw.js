@@ -1,5 +1,5 @@
 // Guarda la app en la tablet para que funcione sin internet.
-const CACHE = 'bts-vinyl-v6';
+const CACHE = 'bts-vinyl-v7';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
   './js/main.js', './js/db.js', './js/albums.js', './js/textures.js', './js/sfx.js', './js/editor.js', './js/catalog.js', './js/youtube.js', './js/config.js',

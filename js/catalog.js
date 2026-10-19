@@ -4,12 +4,15 @@ const BASE = 'https://itunes.apple.com';
 const COUNTRY = 'us';
 const BTS_ID = 883131348;
 
-export const norm = (s) => String(s || '')
+/** Nombre exacto de un lanzamiento: distingue ediciones, p. ej. "(Special Edition)". */
+export const releaseKey = (s) => String(s || '')
   .normalize('NFKC')
   .toLowerCase()
   .replace(/\s*[-–]\s*(single|ep)\s*$/i, '')
-  .replace(/\((?:[^)]*?)(edition|ver\.?|version)\)/gi, '')
   .replace(/[^\p{L}\p{N}]/gu, '');
+
+/** Nombre flexible: ignora la edición. Sirve para emparejar títulos y canciones. */
+export const norm = (s) => releaseKey(String(s || '').replace(/\((?:[^)]*?)(edition|ver\.?|version)\)/gi, ''));
 
 async function getJSON(url) {
   const r = await fetch(url);

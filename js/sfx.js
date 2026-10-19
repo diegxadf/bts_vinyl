@@ -1,6 +1,8 @@
 // Sonidos del tocadiscos generados con Web Audio: crujido del vinilo, caída y subida de la aguja.
 let ctx = null, crackleGain = null, out = null;
-let crackleLevel = 0.5, crackleOn = false;
+let crackleLevel = 0.5, crackleOn = false, sfxOn = true;
+/** Activa o silencia los sonidos mecánicos (aguja, botón). El crujido va aparte. */
+export function setEnabled(on) { sfxOn = on; }
 
 export function init() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
@@ -49,7 +51,7 @@ export function setCrackle(on) { crackleOn = on; apply(); }
 export function setCrackleLevel(v) { crackleLevel = v; apply(); }
 
 function burst({ freq = 70, dur = 0.18, gain = 0.5, noise = 0.25 }) {
-  if (!ctx) return;
+  if (!ctx || !sfxOn) return;
   const t = ctx.currentTime;
   const o = ctx.createOscillator(); o.type = 'sine';
   o.frequency.setValueAtTime(freq * 1.6, t);

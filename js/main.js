@@ -37,7 +37,7 @@ const ARM_L = 2.4;
 const R_OUT = 1.37, R_IN = 0.64;              // recorrido de la aguja
 const LIFT_UP = 0.075, LIFT_REST = 0.035;
 const REST_Z = 1.75;
-const SPIN = (100 / 3 / 60) * Math.PI * 2;    // 33⅓ rpm
+let spinRate = (100 / 3 / 60) * Math.PI * 2; // 33⅓ rpm (o 45, según ajustes)
 const DOCK_POS = new THREE.Vector3(-3.7, ST / 2 + 0.002, 0.3);
 const DOCK_Q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0.16, 0, 'YXZ'));
 const PLAT_WORLD = new THREE.Vector3(TT.x + PLAT.x, REC_Y, TT.z + PLAT.z);
@@ -67,7 +67,8 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture
 
 const camera = new THREE.PerspectiveCamera(36, innerWidth / innerHeight, 0.1, 120);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xf3d2df, 0.9));
+const hemi = new THREE.HemisphereLight(0xffffff, 0xf3d2df, 0.9);
+scene.add(hemi);
 const key = new THREE.DirectionalLight(0xfff6f2, 2.0);
 key.position.set(-4.5, 10, 6);
 key.target.position.set(-0.6, 0, 0);
@@ -375,21 +376,35 @@ function layoutObjects() {
     m.visible = Math.abs(i - car.scroll) < 7 || (i === sel && mode !== 'library');
     if (m.visible) sleeveTransform(i, m.position, m.quaternion);
     // flotación suave de la funda central
-    const f = (1 - Math.min(1, Math.abs(i - car.scroll))) * (1 - trans.t);
+    const f = settings.motion === 'reduced' ? 0 : (1 - Math.min(1, Math.abs(i - car.scroll))) * (1 - trans.t);
     if (f > 0) m.position.y += Math.sin(clock * 1.1) * 0.05 * f;
   });
   const ri = albums.findIndex((a) => a.id === recAlbumId);
   if (ri < 0) { recordGroup.visible = false; return; }
   const sm = albums[ri]._sleeve;
-  _p.set(car.peek * PEEK, 0, 0).applyQuaternion(sm.quaternion).add(sm.position);
+  const active = mode !== 'library' && ri === sel;
+  // con la funda sobre la mesa el disco apenas asoma, para no meterse en la base del tocadiscos
+  const docked = active ? ease(clamp(trans.t / 0.6, 0, 1)) : 0;
+  _p.set(car.peek * PEEK * lerp(1, 0.25, docked), 0, 0).applyQuaternion(sm.quaternion).add(sm.position);
   _q.copy(sm.quaternion).multiply(QX90);
-  const k = mode !== 'library' && ri === sel ? ease(clamp((trans.t - 0.5) / 0.5, 0, 1)) : 0;
-  recordGroup.position.copy(_p).lerp(PLAT_WORLD, k);
-  recordGroup.position.y += Math.sin(Math.PI * k) * 1.0;
-  recordGroup.quaternion.copy(_q).slerp(IDENT, k);
-  recordGroup.visible = car.peek > 0.01 || k > 0;
-  recOnPlatter = k >= 0.999;
-  sheen.material.opacity = 0.3 * smooth(clamp((k - 0.9) / 0.1, 0, 1));
+  // vuelo funda <-> plato: primero sube, luego se desplaza y al final baja (nunca atraviesa la base)
+  const u = active ? clamp((trans.t - 0.5) / 0.5, 0, 1) : 0;
+  const h = ease(u);
+  const y = lerp(_p.y, PLAT_WORLD.y, u) + 1.25 * Math.sin(Math.PI * Math.pow(u, 0.6));
+  recordGroup.position.copy(_p).lerp(PLAT_WORLD, h);
+  recordGroup.position.y = u > 0 ? Math.max(y, clearance(recordGroup.position)) : _p.y;
+  recordGroup.quaternion.copy(_q).slerp(IDENT, h);
+  recordGroup.visible = car.peek > 0.01 || u > 0;
+  recOnPlatter = u >= 0.999;
+  sheen.material.opacity = 0.3 * smooth(clamp((u - 0.9) / 0.1, 0, 1));
+}
+
+/** Altura mínima del centro del disco para no tocar la base del tocadiscos. */
+function clearance(p) {
+  const over = Math.abs(p.x - TT.x) < PL_W / 2 + REC_R && Math.abs(p.z - TT.z) < PL_D / 2 + REC_R;
+  if (!over) return -Infinity;
+  const toPlatter = Math.hypot(p.x - PLAT_WORLD.x, p.z - PLAT_WORLD.z);
+  return toPlatter < 0.15 ? -Infinity : PLAT_TOP + REC_H + 0.03; // ya está sobre el plato: puede bajar
 }
 
 let lastCenter = -2;
@@ -699,6 +714,14 @@ function prev() {
 
 async function onEnded() {
   if (P.state !== 'playing') return;
+  if (P.index < P.album.tracks.length - 1 && !settings.autoAdvance) {
+    // sin pasar sola: la aguja se levanta en el espacio entre canciones; ▶ sigue con la siguiente
+    P.index++;
+    loadedTrackId = null;
+    await cuePause();
+    renderNowPlaying();
+    return;
+  }
   if (P.index < P.album.tracks.length - 1) {
     const tok = seq;
     P.index++;
@@ -718,7 +741,8 @@ async function onEnded() {
     if (tok !== seq) return;
     P.index = 0;
     loadedTrackId = null;
-    park();
+    if (settings.endAction === 'repeat') playFrom(0, 0); // la aguja vuelve al primer surco
+    else park();
   }
 }
 function onExternalPause(e) {
@@ -787,7 +811,7 @@ function endArmDrag() {
 function updateDeck(dt) {
   if (P.motor < P.motorTarget) P.motor = Math.min(1, P.motor + dt / 1.1);
   else if (P.motor > P.motorTarget) P.motor = Math.max(0, P.motor - dt / 2.4);
-  spin -= P.motor * SPIN * dt;
+  spin -= P.motor * spinRate * dt;
   platter.rotation.y = spin;
   disc.rotation.y = spin;
   ledMat.emissiveIntensity = lerp(ledMat.emissiveIntensity, P.motorTarget ? 3 : 0.1, Math.min(1, dt * 8));
@@ -820,15 +844,17 @@ async function enterPlayer(i) {
   renderPlayer();
   let shown = false;
   const from = trans.t;
-  await animate(2.5 * (1 - from), (k) => {
+  await animate(transitionTime(2.5) * (1 - from), (k) => {
     trans.t = lerp(from, 1, k);
     if (!shown && trans.t > 0.65) { shown = true; $('#player-ui').classList.add('show'); }
   });
   mode = 'player';
   $('#player-ui').classList.add('show');
-  if (a.tracks.length) playFrom(0, 0);
-  else toast('Este álbum aún no tiene canciones: toca "Editar" para añadirlas.');
+  if (!a.tracks.length) toast('Este álbum aún no tiene canciones: toca "Editar" para añadirlas.');
+  else if (settings.autoplay) playFrom(0, 0);
+  else toast('Toca ▶ o lleva el brazo al disco para empezar.');
 }
+const transitionTime = (s) => (settings.motion === 'reduced' ? s * 0.55 : s);
 
 async function goLibrary() {
   if (mode !== 'player') return;
@@ -837,9 +863,10 @@ async function goLibrary() {
   P.state = 'rest'; arm.theta = 0; arm.lift = LIFT_REST; motorOff();
   mode = 'toLibrary';
   const from = trans.t;
-  await animate(2.1 * from, (k) => { trans.t = lerp(from, 0, k); });
+  await animate(transitionTime(2.1) * from, (k) => { trans.t = lerp(from, 0, k); });
   mode = 'library';
   sel = -1;
+  if (pendingSort) sortAlbums();
   P.album = null;
   pauseAudio();
   yt.stop();
@@ -925,7 +952,7 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: true });
 
 window.addEventListener('keydown', (e) => {
-  if (!$('#editor').hidden || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+  if ([...document.querySelectorAll('.modal')].some((m) => !m.hidden) || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
   if (mode === 'library') {
     if (e.key === 'ArrowLeft') car.target = clamp(Math.round(car.target) - 1, 0, albums.length - 1);
     if (e.key === 'ArrowRight') car.target = clamp(Math.round(car.target) + 1, 0, albums.length - 1);
@@ -1046,6 +1073,7 @@ if ('mediaSession' in navigator) {
 
 let wakeLock = null;
 async function keepAwake(on) {
+  if (!settings.keepAwake) on = false;
   try {
     if (on && !wakeLock && navigator.wakeLock) {
       wakeLock = await navigator.wakeLock.request('screen');
@@ -1055,37 +1083,137 @@ async function keepAwake(on) {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && P.intent === 'play') keepAwake(true); });
 
-// ajustes guardados
-const settings = { vol: 0.9, crackle: 0.45, source: 'youtube', ytKey: '' };
+// ============================================================
+// Ajustes
+// ============================================================
+const DEFAULTS = {
+  vol: 0.9, crackle: 0.45, source: 'youtube', ytKey: '',
+  // reproducción
+  autoplay: false, autoAdvance: true, endAction: 'stop', rpm: '33', needleSfx: true, keepAwake: true,
+  // apariencia
+  theme: 'light', accent: 'pink', deck: 'pink', textSize: 'normal', motion: 'full',
+  // biblioteca
+  sort: 'custom',
+};
+const settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bts-vinyl-settings') || '{}')); } catch { /* ignore */ }
 const saveSettings = () => { try { localStorage.setItem('bts-vinyl-settings', JSON.stringify(settings)); } catch { /* ignore */ } };
 audio.volume = yt.volume = settings.vol;
 sfx.setCrackleLevel(settings.crackle);
 $('#vol').value = settings.vol;
 $('#crackle').value = settings.crackle;
-// relleno rosa de los deslizadores
+// relleno de color de los deslizadores
 function paintRange(el) { el.style.setProperty('--p', `${((el.value - el.min) / (el.max - el.min)) * 100}%`); }
 document.querySelectorAll('input[type=range]').forEach((el) => { paintRange(el); el.addEventListener('input', () => paintRange(el)); });
 $('#vol').addEventListener('input', (e) => { settings.vol = +e.target.value; audio.volume = yt.volume = settings.vol; saveSettings(); });
 
-// ---------- ajustes: fuente de las canciones y clave de YouTube ----------
+const ACCENTS = { // [color de la cápsula, brillo del LED]
+  pink: [0xf0699a, 0xff4f8f], lilac: [0xa98be8, 0x9b7bff], purple: [0x7b4dff, 0x8a5cff], sky: [0x4fa3e0, 0x3d9be9],
+  mint: [0x3fb58a, 0x2fd39a], gold: [0xd1a23a, 0xffb52e], red: [0xe2486b, 0xff3b5c],
+};
+const DECKS = { pink: 0xf6cfdd, white: 0xfbf8f9, lilac: 0xd9c9f2, mint: 0xcdebdc, black: 0x2a252c, wood: 0xffffff };
+const THEMES = {
+  light: { bg: 0xfcf7f9, floor: 0xffffff, floorEm: 0xfff3f7, emI: 0.35, sky: 0xffffff, ground: 0xf3d2df, hemi: 0.9 },
+  dark: { bg: 0x151117, floor: 0x2b2330, floorEm: 0x000000, emI: 0, sky: 0xd9ccff, ground: 0x1a1220, hemi: 0.55 },
+};
+let woodTex = null;
+const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+
+function applySettings() {
+  const root = document.documentElement;
+  root.dataset.theme = settings.theme;
+  root.dataset.accent = settings.accent;
+  root.dataset.text = settings.textSize;
+  root.dataset.motion = settings.motion;
+  const th = THEMES[settings.theme] || THEMES.light;
+  scene.background.set(th.bg);
+  scene.fog.color.set(th.bg);
+  floor.material.color.set(th.floor);
+  floor.material.emissive.set(th.floorEm);
+  floor.material.emissiveIntensity = th.emI;
+  hemi.color.set(th.sky);
+  hemi.groundColor.set(th.ground);
+  hemi.intensity = th.hemi;
+  $('meta[name=theme-color]').content = hex(th.bg);
+  const [ac, led] = ACCENTS[settings.accent] || ACCENTS.pink;
+  accentMat.color.set(ac);
+  ledMat.emissive.set(led);
+  const wood = settings.deck === 'wood';
+  if (wood && !woodTex) woodTex = texFrom(T.makeWood());
+  if ((plinthMat.map !== null) !== wood) { plinthMat.map = wood ? woodTex : null; plinthMat.needsUpdate = true; }
+  plinthMat.color.set(DECKS[settings.deck] ?? DECKS.pink);
+  plinthMat.roughness = settings.deck === 'black' ? 0.3 : 0.4;
+  sfx.setEnabled(settings.needleSfx);
+  spinRate = ((settings.rpm === '45' ? 45 : 100 / 3) / 60) * Math.PI * 2;
+  syncSettingsUI();
+}
+
+function syncSettingsUI() {
+  document.querySelectorAll('#settings [data-k]').forEach((el) => {
+    const v = settings[el.dataset.k];
+    if (el.matches('input[type=checkbox]')) el.checked = !!v;
+    else el.querySelectorAll('button[data-v]').forEach((b) => b.classList.toggle('sel', b.dataset.v === String(v)));
+  });
+  const src = $(`input[name=st-source][value=${settings.source}]`);
+  if (src) src.checked = true;
+}
+
+function setSetting(k, v) {
+  settings[k] = v;
+  saveSettings();
+  applySettings();
+  if (k === 'sort') sortAlbums();
+  if (k === 'keepAwake') keepAwake(v && P.intent === 'play');
+}
+
+document.querySelectorAll('#settings [data-k]').forEach((el) => {
+  const k = el.dataset.k;
+  if (el.matches('input[type=checkbox]')) el.addEventListener('change', () => setSetting(k, el.checked));
+  else el.querySelectorAll('button[data-v]').forEach((b) => b.addEventListener('click', () => setSetting(k, b.dataset.v)));
+});
+
+// pestañas de la pantalla de ajustes
+document.querySelectorAll('#settings .tab').forEach((t) => t.addEventListener('click', () => {
+  document.querySelectorAll('#settings .tab').forEach((x) => x.classList.toggle('sel', x === t));
+  document.querySelectorAll('#settings [data-panel]').forEach((p) => { p.hidden = p.dataset.panel !== t.dataset.tab; });
+  if (t.dataset.tab === 'lib') showStorage();
+}));
+
+async function showStorage() {
+  const el = $('#st-storage');
+  try {
+    const { usage } = await navigator.storage.estimate();
+    const own = albums.reduce((n, a) => n + a.tracks.filter((t) => t.file !== false).length, 0);
+    el.textContent = `${albums.length} discos · ${own} archivos de música propios · ${(usage / 1048576).toFixed(0)} MB usados en este dispositivo.`;
+  } catch { el.textContent = ''; }
+}
+
 function openSettings() {
   $('#st-key').value = settings.ytKey || '';
-  $(`input[name=st-source][value=${settings.source}]`).checked = true;
   $('#st-status').textContent = settings.ytKey ? 'Usando tu clave.' : DEFAULT_YT_KEY ? 'Usando la clave incluida en la app (no hace falta poner nada).' : '';
   $('#st-status').className = 'hint';
-  const m = $('#settings');
-  m.hidden = false;
-  requestAnimationFrame(() => m.classList.add('open'));
+  syncSettingsUI();
+  openModal($('#settings'));
 }
-function closeSettings() {
-  const m = $('#settings');
-  m.classList.remove('open');
-  setTimeout(() => { if (!m.classList.contains('open')) m.hidden = true; }, 320);
-}
+const closeSettings = () => closeModal($('#settings'));
 $('#btn-settings').addEventListener('click', openSettings);
 $('#btn-settings2').addEventListener('click', openSettings);
 $('#st-close').addEventListener('click', closeSettings);
+$('#st-save').addEventListener('click', closeSettings);
+
+// fuente de las canciones y clave de YouTube (se guardan al momento)
+document.querySelectorAll('input[name=st-source]').forEach((r) => r.addEventListener('change', () => {
+  settings.source = r.value;
+  saveSettings();
+  ytWarned = false; // la próxima pista que se cargue ya usa la nueva configuración
+  if (P.album) renderPlayer();
+  lastCenter = -2;
+}));
+$('#st-key').addEventListener('change', () => {
+  settings.ytKey = $('#st-key').value.trim();
+  saveSettings();
+  ytWarned = false;
+});
 $('#st-test').addEventListener('click', async () => {
   const key = $('#st-key').value.trim() || DEFAULT_YT_KEY;
   const st = $('#st-status');
@@ -1094,16 +1222,65 @@ $('#st-test').addEventListener('click', async () => {
   try { await testKey(key); st.textContent = '✓ La clave funciona.'; st.className = 'hint ok'; }
   catch (e) { st.textContent = e.message; st.className = 'hint bad'; }
 });
-$('#st-save').addEventListener('click', () => {
-  settings.ytKey = $('#st-key').value.trim();
-  settings.source = $('input[name=st-source]:checked').value;
-  saveSettings();
-  ytWarned = false; // la próxima pista que se cargue ya usa la nueva configuración
-  closeSettings();
-  if (P.album) renderPlayer();
-  lastCenter = -2;
-  toast(useYouTube() ? 'Las canciones sonarán completas desde YouTube.' : settings.source === 'youtube' ? 'Falta la clave de YouTube: mientras tanto suenan avances.' : 'Usaré los avances de 30 s.');
+
+$('#st-sync').addEventListener('click', () => { closeSettings(); syncCatalog(); });
+$('#st-ytclear').addEventListener('click', async () => {
+  if (!confirm('¿Volver a buscar en YouTube todas las canciones? Gasta cupo de búsquedas al reproducirlas.')) return;
+  for (const a of albums) {
+    for (const t of a.tracks) for (const k of ['yt', 'ytAlt', 'ytBad', 'ytBlocked']) delete t[k];
+    await db.put('albums', serialize(a));
+  }
+  toast('Listo: los videos se volverán a buscar al reproducir cada canción.');
 });
+$('#st-reset').addEventListener('click', () => {
+  if (!confirm('¿Volver a los ajustes de fábrica? Tu colección no se borra.')) return;
+  Object.assign(settings, DEFAULTS, { ytKey: settings.ytKey, vol: settings.vol, crackle: settings.crackle });
+  saveSettings();
+  applySettings();
+  sortAlbums();
+  toast('Ajustes restablecidos.');
+});
+
+// ---------- orden de la biblioteca ----------
+let pendingSort = false;
+function sortAlbums() {
+  if (mode !== 'library') { pendingSort = true; return; } // se aplica al volver a la biblioteca
+  pendingSort = false;
+  const current = albums[centerIndex()];
+  const by = {
+    year: (a, b) => (+a.year || 9999) - (+b.year || 9999) || a.order - b.order,
+    title: (a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base', numeric: true }),
+    custom: (a, b) => a.order - b.order,
+  }[settings.sort] || ((a, b) => a.order - b.order);
+  albums.sort(by);
+  if (current) { car.target = car.scroll = albums.indexOf(current); }
+  lastCenter = -2;
+}
+
+// ---------- temporizador de apagado ----------
+const SLEEP_STEPS = [0, 15, 30, 60, 90];
+let sleepAt = 0;
+function renderSleep() {
+  const left = sleepAt ? Math.max(1, Math.round((sleepAt - Date.now()) / 60000)) : 0;
+  $('#sleep-n').textContent = left ? `${left}′` : '';
+  $('#btn-sleep').classList.toggle('on', !!left);
+}
+$('#btn-sleep').addEventListener('click', () => {
+  const left = sleepAt ? Math.round((sleepAt - Date.now()) / 60000) : 0;
+  const next = SLEEP_STEPS.find((m) => m > left + 1) ?? 0;
+  sleepAt = next ? Date.now() + next * 60000 : 0;
+  renderSleep();
+  toast(next ? `El tocadiscos se detendrá en ${next} minutos.` : 'Temporizador desactivado.');
+});
+function checkSleep() {
+  if (!sleepAt) return;
+  if (Date.now() >= sleepAt) {
+    sleepAt = 0;
+    if (P.state !== 'rest') park();
+    toast('Temporizador: el disco se ha detenido. ¡Buenas noches! ☾');
+  }
+  renderSleep();
+}
 $('#crackle').addEventListener('input', (e) => { settings.crackle = +e.target.value; sfx.init(); sfx.setCrackleLevel(settings.crackle); saveSettings(); });
 
 $('#pl-seek').addEventListener('input', () => { seeking = true; });
@@ -1206,7 +1383,8 @@ async function addFromCatalog(it, editions, btn) {
     await prepareAlbum(a);
     buildSleeve(a);
     albums.push(a);
-    car.target = albums.length - 1;
+    sortAlbums();
+    car.target = albums.indexOf(a);
     closeModal($('#picker'));
     toast(found.empty && !extra ? `"${a.title}" añadido. iTunes aún no tiene sus canciones: puedes ponerlas en "Editar".` : `"${a.title}" añadido a tu colección.`);
   } catch {
@@ -1245,7 +1423,8 @@ async function saveAlbum(draft, isNew = false) {
     await prepareAlbum(draft);
     buildSleeve(draft);
     albums.push(draft);
-    car.target = albums.length - 1;
+    sortAlbums();
+    car.target = albums.indexOf(draft);
     updateLibInfo();
     toast('Álbum creado.');
     return;
@@ -1343,7 +1522,7 @@ function frame(now) {
   updateCamera();
   renderer.render(scene, camera);
   uiAcc += dt;
-  if (uiAcc > 0.25) { uiAcc = 0; if (mode === 'player') renderNowPlaying(); }
+  if (uiAcc > 0.25) { uiAcc = 0; if (mode === 'player') renderNowPlaying(); checkSleep(); }
   requestAnimationFrame(frame);
 }
 
@@ -1362,6 +1541,9 @@ async function start() {
     await prepareAlbum(a);
     buildSleeve(a);
   }
+  applySettings();
+  sortAlbums();
+  car.target = car.scroll = 0;
   if (albums[0]) setRecordAlbum(albums[0]);
   updateLibInfo();
   requestAnimationFrame((t) => { last = t; frame(t); });
@@ -1381,4 +1563,6 @@ if ('serviceWorker' in navigator && window.isSecureContext && location.hostname 
 }
 
 // acceso para depurar desde la consola
-window.__vinyl = { P, car, arm, albums: () => albums, enterPlayer, goLibrary };
+window.__vinyl = { P, car, arm, albums: () => albums, enterPlayer, goLibrary, trans, settings, setMode: (m) => { mode = m; },
+  // coloca la escena en un punto de la transición (0 = biblioteca, 1 = tocadiscos) y devuelve dónde queda el disco
+  pose: (t) => { trans.t = t; layoutObjects(); return { ...recordGroup.position, top: TOP, platTop: PLAT_TOP, tt: { x: TT.x, z: TT.z, w: PL_W, d: PL_D }, r: REC_R }; } };

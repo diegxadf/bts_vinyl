@@ -239,6 +239,27 @@ export function makeSheen() {
   return c;
 }
 
+/** Veta de nogal para el tocadiscos de madera. */
+export function makeWood() {
+  const W = 1024, H = 1024, c = canvas(W, H), g = c.getContext('2d');
+  const r = rng('nogal');
+  const base = g.createLinearGradient(0, 0, W, H);
+  base.addColorStop(0, '#6b4226'); base.addColorStop(0.5, '#7a4b2b'); base.addColorStop(1, '#5a361e');
+  g.fillStyle = base; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 260; i++) {
+    const y0 = r() * H, amp = 4 + r() * 18, f = 0.002 + r() * 0.006, ph = r() * 6.28;
+    g.strokeStyle = r() < 0.6 ? `rgba(30,14,6,${0.08 + r() * 0.2})` : `rgba(170,112,70,${0.05 + r() * 0.12})`;
+    g.lineWidth = 0.6 + r() * 2.4;
+    g.beginPath();
+    for (let x = 0; x <= W; x += 16) {
+      const y = y0 + Math.sin(x * f + ph) * amp + Math.sin(x * f * 3.1 + ph * 2) * amp * 0.25;
+      if (x) g.lineTo(x, y); else g.moveTo(x, y);
+    }
+    g.stroke();
+  }
+  return c;
+}
+
 /** Lateral del plato con puntos estroboscópicos. */
 export function makeStrobe() {
   const W = 2048, H = 64, c = canvas(W, H), g = c.getContext('2d');

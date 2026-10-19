@@ -58,6 +58,9 @@
     <div class="pl-top">
       <button id="btn-back" class="pill"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>Biblioteca</button>
       <div class="actions">
+        <button id="btn-sleep" class="pill icon sleep" aria-label="Temporizador de apagado" title="Temporizador de apagado">
+          <svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><span id="sleep-n"></span>
+        </button>
         <button id="btn-settings2" class="pill icon" aria-label="Ajustes"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
         <button id="btn-edit2" class="pill">Editar</button>
       </div>
@@ -178,11 +181,77 @@
         <h2>Ajustes</h2>
         <button id="st-close" class="pill icon" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </header>
+      <div class="st-tabs-wrap">
+        <div class="pk-tabs st-tabs">
+          <button class="tab sel" data-tab="play">Reproducción</button>
+          <button class="tab" data-tab="look">Apariencia</button>
+          <button class="tab" data-tab="lib">Biblioteca</button>
+          <button class="tab" data-tab="music">Canciones</button>
+        </div>
+      </div>
       <div class="st-body">
+        <!-- Reproducción -->
+        <section data-panel="play">
+          <label class="opt"><span><b>Empezar a sonar al poner el disco</b><small>Si está apagado, el disco queda en el plato y empiezas tú con ▶ o llevando el brazo.</small></span>
+            <input type="checkbox" class="switch" data-k="autoplay"></label>
+          <label class="opt"><span><b>Pasar sola a la siguiente canción</b><small>Si está apagado, la aguja se levanta al acabar cada canción.</small></span>
+            <input type="checkbox" class="switch" data-k="autoAdvance"></label>
+          <div class="opt col"><span><b>Al terminar el disco</b></span>
+            <div class="seg" data-k="endAction"><button data-v="stop">Detener</button><button data-v="repeat">Volver a empezar</button></div></div>
+          <div class="opt col"><span><b>Velocidad del plato</b><small>Solo cambia lo rápido que gira el disco, no la música.</small></span>
+            <div class="seg" data-k="rpm"><button data-v="33">33⅓ rpm</button><button data-v="45">45 rpm</button></div></div>
+          <label class="opt"><span><b>Sonidos del tocadiscos</b><small>Caída y subida de la aguja, botón de arranque.</small></span>
+            <input type="checkbox" class="switch" data-k="needleSfx"></label>
+          <label class="opt"><span><b>Mantener la pantalla encendida</b><small>Mientras suena un disco.</small></span>
+            <input type="checkbox" class="switch" data-k="keepAwake"></label>
+        </section>
+
+        <!-- Apariencia -->
+        <section data-panel="look" hidden>
+          <div class="opt col"><span><b>Tema</b></span>
+            <div class="seg" data-k="theme"><button data-v="light">☀︎ Claro</button><button data-v="dark">☾ Oscuro</button></div></div>
+          <div class="opt col"><span><b>Color de acento</b><small>Botones, detalles y la cápsula del brazo.</small></span>
+            <div class="swatches" data-k="accent">
+              <button data-v="pink" style="--c:#f0699a" title="Rosa"></button>
+              <button data-v="lilac" style="--c:#a98be8" title="Lila"></button>
+              <button data-v="purple" style="--c:#7b4dff" title="Morado"></button>
+              <button data-v="sky" style="--c:#4fa3e0" title="Cielo"></button>
+              <button data-v="mint" style="--c:#3fb58a" title="Menta"></button>
+              <button data-v="gold" style="--c:#d1a23a" title="Dorado"></button>
+              <button data-v="red" style="--c:#e2486b" title="Rojo"></button>
+            </div></div>
+          <div class="opt col"><span><b>Color del tocadiscos</b></span>
+            <div class="swatches" data-k="deck">
+              <button data-v="pink" style="--c:#f6cfdd" title="Rosa pastel"></button>
+              <button data-v="white" style="--c:#fbf8f9" title="Blanco"></button>
+              <button data-v="lilac" style="--c:#d9c9f2" title="Lila"></button>
+              <button data-v="mint" style="--c:#cdebdc" title="Menta"></button>
+              <button data-v="black" style="--c:#2a252c" title="Negro"></button>
+              <button data-v="wood" style="--c:linear-gradient(135deg,#6b4226,#3f2414)" title="Madera"></button>
+            </div></div>
+          <div class="opt col"><span><b>Tamaño del texto</b></span>
+            <div class="seg" data-k="textSize"><button data-v="normal">Normal</button><button data-v="large">Grande</button></div></div>
+          <div class="opt col"><span><b>Animaciones</b><small>"Ágiles" acorta las transiciones y quita el balanceo de las fundas.</small></span>
+            <div class="seg" data-k="motion"><button data-v="full">Completas</button><button data-v="reduced">Ágiles</button></div></div>
+        </section>
+
+        <!-- Biblioteca -->
+        <section data-panel="lib" hidden>
+          <div class="opt col"><span><b>Ordenar los discos</b></span>
+            <div class="seg" data-k="sort"><button data-v="custom">Como los añadí</button><button data-v="year">Por año</button><button data-v="title">A–Z</button></div></div>
+          <div class="opt col"><span><b>Portadas y canciones</b><small>Vuelve a buscar en iTunes los álbumes que aún no tienen portada o lista de canciones.</small></span>
+            <button id="st-sync" class="pill small">Buscar ahora</button></div>
+          <div class="opt col"><span><b>Videos de YouTube encontrados</b><small>Olvida los videos ya elegidos para que se vuelvan a buscar (útil si alguno no era el correcto).</small></span>
+            <button id="st-ytclear" class="pill small">Volver a buscar videos</button></div>
+          <p id="st-storage" class="hint"></p>
+        </section>
+
+        <!-- Canciones -->
+        <section data-panel="music" hidden>
         <div class="field">
           <span>Las canciones del catálogo suenan…</span>
           <label class="choice"><input type="radio" name="st-source" value="youtube">
-            <span><b>Completas desde YouTube</b><small>Necesita internet y una clave gratuita. El video se ve en el panel.</small></span></label>
+            <span><b>Completas desde YouTube</b><small>Necesita internet. El video se ve en el panel.</small></span></label>
           <label class="choice"><input type="radio" name="st-source" value="preview">
             <span><b>Avances de 30 s (iTunes)</b><small>Sin configurar nada.</small></span></label>
           <small class="note">Tus propios archivos siempre suenan completos y sin conexión.</small>
@@ -202,14 +271,16 @@
             <li>En <b>APIs y servicios → Biblioteca</b>, busca <b>YouTube Data API v3</b> y pulsa <b>Habilitar</b>.</li>
             <li>En <b>APIs y servicios → Credenciales</b>, pulsa <b>Crear credenciales → Clave de API</b> y cópiala.</li>
             <li>Recomendado: en la clave, <b>Restricciones de API → YouTube Data API v3</b>.</li>
-            <li>Pégala arriba, toca <b>Probar</b> y luego <b>Guardar</b>.</li>
+            <li>Pégala arriba y toca <b>Probar</b>. Se guarda sola.</li>
           </ol>
           <p>Cada canción se busca una sola vez y queda guardada. El cupo gratuito da para unas 100 canciones nuevas al día.</p>
         </details>
+        </section>
       </div>
       <footer>
+        <button id="st-reset" class="link">Restablecer ajustes</button>
         <div class="spacer"></div>
-        <button id="st-save" class="primary">Guardar</button>
+        <button id="st-save" class="primary">Listo</button>
       </footer>
     </div>
   </div>

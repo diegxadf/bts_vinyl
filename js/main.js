@@ -262,7 +262,7 @@ function setRecordAlbum(a) {
 let albums = [];
 const sleeveGeo = new THREE.BoxGeometry(S, S, ST);
 
-const persistKeys = ['id', 'title', 'artist', 'year', 'vinyl', 'palette', 'order', 'tracks', 'cover', 'itunesId', 'itunesHint'];
+const persistKeys = ['id', 'title', 'artist', 'year', 'vinyl', 'palette', 'order', 'tracks', 'cover', 'itunesId', 'itunesHint', 'extrasV'];
 const serialize = (a) => Object.fromEntries(persistKeys.map((k) => [k, a[k]]));
 
 async function prepareAlbum(a) {
@@ -325,6 +325,8 @@ async function loadAlbums() {
 async function applyCatalog(a, { match, tracks, cover }) {
   if (!a.cover) a.cover = cover;
   a.tracks = catalog.mergeTracks(tracks, a.tracks);
+  a.extrasV = 0;
+  catalog.applyExtras(a); // vuelve a poner las canciones de la edición física
   a.itunesId = match.id;
   if (!a.year && match.year) a.year = +match.year;
   await db.put('albums', serialize(a));
@@ -1147,16 +1149,26 @@ async function renderPicker(query) {
   box.innerHTML = '<p class="hint">Cargando…</p>';
   let list, all = [];
   try {
-    if (query) list = await catalog.searchAlbums(query);
-    else {
-      all = await catalog.btsAlbums();
-      const seen = new Set();
-      list = all.filter((a) => (pkFilter === 'singles') === catalog.isSingle(a)).filter((a) => {
-        const k = catalog.releaseKey(a.title);
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
+    if (query) {
+      // primero lo que coincide en las discografías de BTS y de los miembros, luego el resto de iTunes
+      const q = catalog.norm(query);
+      const [bts, solo, remote] = await Promise.all([catalog.btsAlbums(), catalog.soloAlbums(), catalog.searchAlbums(query)]);
+      const exact = (a) => catalog.releaseKey(a.title) === catalog.releaseKey(query) || catalog.releaseKey(`${a.member || a.artist} ${a.title}`) === catalog.releaseKey(query);
+      const local = [...bts, ...solo]
+        .filter((a) => catalog.norm(a.title).includes(q) || catalog.norm(`${a.member || a.artist} ${a.title}`).includes(q))
+        .sort((a, b) => exact(b) - exact(a) || catalog.isVariant(a) - catalog.isVariant(b) || b.count - a.count);
+      const ids = new Set(local.map((a) => a.id));
+      list = [...local, ...remote.filter((a) => !ids.has(a.id))];
+    } else {
+      all = pkFilter === 'solo' ? await catalog.soloAlbums() : await catalog.btsAlbums();
+      // una tarjeta por lanzamiento: la edición con más canciones
+      const best = new Map();
+      const shown = pkFilter === 'solo' ? all.filter((x) => !catalog.isVariant(x)) : all.filter((x) => (pkFilter === 'singles') === catalog.isSingle(x));
+      for (const a of shown) {
+        const k = catalog.releaseKey(a.title) + (a.member || '');
+        if (!best.has(k) || best.get(k).count < a.count) best.set(k, a);
+      }
+      list = [...best.values()];
     }
   } catch {
     box.innerHTML = '<p class="hint">Necesitas internet para ver la discografía.</p>';
@@ -1171,9 +1183,9 @@ async function renderPicker(query) {
     b.innerHTML = '<img alt="" loading="lazy"><span class="rt"></span><span class="rm"></span>';
     b.querySelector('img').src = it.thumb;
     b.querySelector('.rt').textContent = cleanName(it.title);
-    b.querySelector('.rm').textContent = have ? '✓ En tu colección' : `${query ? it.artist + ' · ' : ''}${it.year} · ${it.count} canc.`;
+    b.querySelector('.rm').textContent = have ? '✓ En tu colección' : `${query || it.member ? (it.member || it.artist) + ' · ' : ''}${it.year} · ${it.count} canc.`;
     // en la discografía, si una edición no trae canciones se prueba otra con el mismo nombre
-    const editions = query ? [it] : [it, ...all.filter((x) => x !== it && catalog.releaseKey(x.title) === catalog.releaseKey(it.title))];
+    const editions = query ? [it] : [it, ...all.filter((x) => x !== it && x.member === it.member && catalog.releaseKey(x.title) === catalog.releaseKey(it.title))];
     b.onclick = () => (have ? toast('Ya está en tu colección.') : addFromCatalog(it, editions, b));
     box.appendChild(b);
   });
@@ -1189,13 +1201,14 @@ async function addFromCatalog(it, editions, btn) {
       title: cleanName(it.title), artist: it.artist, year: +it.year || '',
       cover: found.cover, tracks: found.tracks, itunesId: found.empty ? null : found.match.id,
     };
+    const extra = catalog.applyExtras(a);
     await db.put('albums', serialize(a));
     await prepareAlbum(a);
     buildSleeve(a);
     albums.push(a);
     car.target = albums.length - 1;
     closeModal($('#picker'));
-    toast(found.empty ? `"${a.title}" añadido. iTunes aún no tiene sus canciones: puedes ponerlas en "Editar".` : `"${a.title}" añadido a tu colección.`);
+    toast(found.empty && !extra ? `"${a.title}" añadido. iTunes aún no tiene sus canciones: puedes ponerlas en "Editar".` : `"${a.title}" añadido a tu colección.`);
   } catch {
     btn.classList.remove('loading');
     toast('No se pudo descargar el álbum. Revisa la conexión.');
@@ -1342,7 +1355,13 @@ async function start() {
     toast('No se pudo abrir el almacenamiento local; los cambios no se guardarán.');
     albums = DEFAULT_ALBUMS.map((a, i) => ({ id: 'bts-' + a.slug, title: a.title, artist: 'BTS', year: a.year, vinyl: a.vinyl, palette: a.palette, order: i, tracks: [], cover: null }));
   }
-  for (const a of albums) { await prepareAlbum(a); buildSleeve(a); }
+  for (const a of albums) {
+    // canciones de las ediciones físicas que faltan (lista verificada en extras.js)
+    const v = a.extrasV;
+    if (catalog.applyExtras(a) || a.extrasV !== v) db.put('albums', serialize(a)).catch(() => {});
+    await prepareAlbum(a);
+    buildSleeve(a);
+  }
   if (albums[0]) setRecordAlbum(albums[0]);
   updateLibInfo();
   requestAnimationFrame((t) => { last = t; frame(t); });

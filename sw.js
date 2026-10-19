@@ -1,8 +1,8 @@
 // Guarda la app en la tablet para que funcione sin internet.
-const CACHE = 'bts-vinyl-v7';
+const CACHE = 'bts-vinyl-v8';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
-  './js/main.js', './js/db.js', './js/albums.js', './js/textures.js', './js/sfx.js', './js/editor.js', './js/catalog.js', './js/youtube.js', './js/config.js',
+  './js/main.js', './js/db.js', './js/albums.js', './js/textures.js', './js/sfx.js', './js/editor.js', './js/catalog.js', './js/youtube.js', './js/config.js', './js/extras.js',
   './vendor/three.module.js', './vendor/addons/RoundedBoxGeometry.js', './vendor/addons/RoomEnvironment.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
 ];

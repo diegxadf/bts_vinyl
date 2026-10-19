@@ -7,7 +7,7 @@ import * as T from './textures.js';
 import * as sfx from './sfx.js';
 import { openEditor } from './editor.js';
 import * as catalog from './catalog.js';
-import { YouTubeMedia, findVideo, testKey } from './youtube.js';
+import { YouTubeMedia, findVideo, testKey, isBlockedError } from './youtube.js';
 import { DEFAULT_YT_KEY } from './config.js';
 
 const $ = (s) => document.querySelector(s);
@@ -525,9 +525,10 @@ async function loadYouTube(tr) {
   if (!navigator.onLine || tr.ytBlocked) return false;
   try {
     if (!tr.yt) {
-      const id = await findVideo(ytKey(), { title: tr.title, album: P.album.title, artist: P.album.artist || 'BTS' });
-      if (!id) return false;
-      tr.yt = id;
+      const found = await findVideo(ytKey(), { title: tr.title, album: P.album.title, artist: P.album.artist || 'BTS', exclude: tr.ytBad || [] });
+      if (!found) { tr.ytBlocked = true; db.put('albums', serialize(P.album)); return false; }
+      tr.yt = found.id;
+      tr.ytAlt = found.alts;
       db.put('albums', serialize(P.album));
     }
     await yt.load(tr.yt);
@@ -708,14 +709,23 @@ yt.addEventListener('playing', () => {
   // empezó a sonar tocando el video directamente
   if (media === yt && P.state === 'cued') playFrom(P.index, curTime());
 });
-yt.addEventListener('error', () => {
-  if (media !== yt) return;
-  const tr = P.album?.tracks[P.index];
-  if (tr) { tr.yt = null; tr.ytBlocked = true; }
-  toast('Ese video de YouTube no se puede reproducir aquí; paso a la siguiente.');
-  if (P.state === 'playing') {
-    if (P.index < P.album.tracks.length - 1) playFrom(P.index + 1, 0); else park();
-  }
+// Video bloqueado por la discográfica fuera de YouTube: probamos otra versión oficial y, si no hay, el avance.
+yt.addEventListener('error', (e) => {
+  const tr = P.album?.tracks.find((t) => t.yt && t.yt === yt.videoId);
+  if (!tr) return;
+  if (!isBlockedError(e.detail)) { toast('YouTube tuvo un problema con este video.'); return; }
+  tr.ytBad = [...new Set([...(tr.ytBad || []), tr.yt])];
+  const searched = Array.isArray(tr.ytAlt);
+  tr.yt = (tr.ytAlt || []).find((id) => !tr.ytBad.includes(id)) || null;
+  // sin alternativas: si ya se buscaron, queda el avance; si es un dato antiguo, se vuelve a buscar una vez
+  if (!tr.yt && searched) tr.ytBlocked = true;
+  if (!tr.yt && !searched) tr.ytAlt = [];
+  db.put('albums', serialize(P.album));
+  yt.stop();
+  const current = P.album.tracks[P.index] === tr;
+  if (current) loadedTrackId = null;
+  toast(tr.yt || !tr.ytBlocked ? 'Esa versión está bloqueada fuera de YouTube; pruebo otra…' : `"${tr.title}" no se puede ver fuera de YouTube; suena el avance de 30 s.`);
+  if (current && P.intent === 'play') playFrom(P.index, 0);
 });
 
 // arrastre del brazo

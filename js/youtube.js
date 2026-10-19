@@ -46,20 +46,30 @@ function score(item, title) {
   return s;
 }
 
-/** Busca el video de una canción (100 unidades de cupo por búsqueda). Prefiere el canal oficial "BTS - Topic". */
-export async function findVideo(key, { title, album, artist = 'BTS' }) {
+/**
+ * Busca el video de una canción (100 unidades de cupo por búsqueda). Prefiere el canal oficial "BTS - Topic".
+ * Devuelve el mejor y varias alternativas: algunas discográficas bloquean la reproducción fuera de YouTube
+ * y entonces se prueba la siguiente versión sin gastar otra búsqueda.
+ */
+export async function findVideo(key, { title, album, artist = 'BTS', exclude = [] }) {
   const queries = [`${artist} ${title} ${album}`, `${artist} ${title}`];
-  let best = null;
+  const found = new Map();
   for (const q of queries) {
-    const j = await api(`search?part=snippet&type=video&videoEmbeddable=true&maxResults=8&q=${encodeURIComponent(q)}`, key);
+    const j = await api(`search?part=snippet&type=video&videoEmbeddable=true&maxResults=10&q=${encodeURIComponent(q)}`, key);
     for (const it of j.items || []) {
+      const id = it.id.videoId;
+      if (!id || exclude.includes(id)) continue;
       const s = score(it, title);
-      if (!best || s > best.s) best = { id: it.id.videoId, s };
+      if (s >= 2 && (!found.has(id) || found.get(id) < s)) found.set(id, s);
     }
-    if (best && best.s >= 6) break;
+    if (found.size >= 3) break;
   }
-  return best && best.s >= 2 ? best.id : null;
+  const ranked = [...found.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 6);
+  return ranked.length ? { id: ranked[0], alts: ranked.slice(1) } : null;
 }
+
+// Códigos de error del reproductor: 100 = no existe, 101/150 = el dueño no permite verlo incrustado.
+export const isBlockedError = (code) => [2, 5, 100, 101, 150, 152, 153].includes(Number(code));
 
 // ---------- reproductor ----------
 let apiReady = null;

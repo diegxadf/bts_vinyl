@@ -37,21 +37,39 @@ export async function searchAlbums(term) {
 }
 
 let btsCache = null;
-async function btsAlbums() {
+/** Toda la discografía de BTS en iTunes, de lo más nuevo a lo más antiguo. */
+export async function btsAlbums() {
   if (!btsCache) {
     const d = await getJSON(`${BASE}/lookup?id=${BTS_ID}&entity=album&limit=200&country=${COUNTRY}`);
-    btsCache = d.results.filter((x) => x.wrapperType === 'collection').map(mapAlbum);
+    btsCache = d.results
+      .filter((x) => x.wrapperType === 'collection')
+      .map((x) => ({ ...mapAlbum(x), date: x.releaseDate || '' }))
+      .sort((a, b) => b.date.localeCompare(a.date));
   }
   return btsCache;
 }
 
-/** Busca en la discografía de BTS el álbum con el mismo nombre. */
-export async function matchBts(title) {
+export const isSingle = (a) => /\s-\s(Single|EP)$/i.test(a.title) || a.count < 5;
+
+/** Ediciones de la discografía de BTS con el mismo nombre, de la más probable a la menos. */
+export async function matchBtsAll(title, hint) {
   const n = norm(title);
-  const exact = (await btsAlbums()).filter((a) => norm(a.title) === n);
-  if (exact.length) return exact.sort((a, b) => a.title.length - b.title.length || b.count - a.count)[0];
+  const exact = (await btsAlbums())
+    .filter((a) => norm(a.title) === n)
+    .sort((a, b) => (b.id === hint) - (a.id === hint) || a.title.length - b.title.length || b.count - a.count);
+  if (exact.length) return exact;
   const found = await searchAlbums(`BTS ${title}`);
-  return found.find((a) => /bts/i.test(a.artist) && norm(a.title).includes(n)) || null;
+  return found.filter((a) => /bts/i.test(a.artist) && norm(a.title).includes(n));
+}
+
+/** Portada y canciones de la primera edición que tenga lista de canciones disponible. */
+export async function fetchAlbum(candidates) {
+  for (const c of candidates.slice(0, 4)) {
+    const tracks = await albumTracks(c.id);
+    if (!tracks.length) continue;
+    return { match: c, tracks, cover: await fetchBlob(c.art) };
+  }
+  return null;
 }
 
 export async function albumTracks(collectionId) {

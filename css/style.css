@@ -284,6 +284,17 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 
 .hint.ok { color: #3f9a64; }
 .hint.bad { color: var(--danger); }
 
+/* ---------- añadir álbum ---------- */
+.pk-body { padding: 4px 24px 16px; display: flex; flex-direction: column; gap: 14px; }
+.pk-tabs { display: flex; gap: 6px; background: var(--blush); padding: 4px; border-radius: 999px; align-self: flex-start; }
+.tab { padding: 8px 16px; border-radius: 999px; font-size: 14px; color: var(--muted); }
+.tab.sel { background: #fff; color: var(--ink); box-shadow: 0 4px 14px rgba(214, 96, 142, .15); }
+#pk-q { flex: 1; font: inherit; font-size: 15px; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 10px 14px; outline: none; }
+#pk-q:focus { border-color: var(--pink-2); box-shadow: 0 0 0 4px rgba(255, 158, 192, .2); }
+.pk-results { max-height: 56vh; margin-top: 0; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.result.owned { opacity: .55; }
+.result.owned .rm { color: #3f9a64; }
+
 /* ---------- ajustes ---------- */
 .sheet.narrow { width: min(580px, 100%); }
 .st-body { padding: 4px 24px 18px; display: flex; flex-direction: column; gap: 20px; }

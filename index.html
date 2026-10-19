@@ -128,7 +128,10 @@
       <div class="ed-tracks">
         <div class="ed-tracks-head">
           <h3>Canciones <small id="ed-count"></small></h3>
-          <label class="primary">+ Añadir canciones<input type="file" id="ed-track-input" accept="audio/*" multiple hidden></label>
+          <div class="actions">
+            <button id="ed-add-name" class="pill small">+ Por nombre</button>
+            <label class="primary">+ Archivos<input type="file" id="ed-track-input" accept="audio/*" multiple hidden></label>
+          </div>
         </div>
         <ol id="ed-track-list"></ol>
         <p id="ed-hint" class="hint">Elige archivos de audio (MP3, M4A, FLAC, OGG…) guardados en la tablet. Se ordenan por nombre de archivo; puedes reordenarlos y renombrarlos aquí.</p>
@@ -138,6 +141,31 @@
         <div class="spacer"></div>
         <button id="ed-cancel" class="pill">Cancelar</button>
         <button id="ed-save" class="primary">Guardar</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ===== Añadir álbum ===== -->
+  <div id="picker" class="modal" hidden>
+    <div class="sheet">
+      <header>
+        <h2>Añadir álbum</h2>
+        <button id="pk-close" class="pill icon" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </header>
+      <div class="pk-body">
+        <div class="pk-tabs">
+          <button class="tab sel" data-f="albums">Álbumes de BTS</button>
+          <button class="tab" data-f="singles">Singles y EP</button>
+        </div>
+        <form id="pk-form" class="ed-search-bar">
+          <input id="pk-q" placeholder="Buscar otros: solistas, OST, colaboraciones…" autocomplete="off">
+          <button class="pill small" type="submit">Buscar</button>
+        </form>
+        <div id="pk-results" class="ed-results pk-results"></div>
+      </div>
+      <footer>
+        <button id="pk-empty" class="link">Crear un álbum vacío</button>
+        <div class="spacer"></div>
       </footer>
     </div>
   </div>

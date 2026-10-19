@@ -89,7 +89,7 @@ function renderTracks(msg) {
   tr.forEach((t, i) => {
     const li = document.createElement('li');
     const badge = t.file === false
-      ? `<span class="badge ${t.previewUrl ? '' : 'off'}">${t.previewUrl ? 'avance' : 'sin audio'}</span>`
+      ? `<span class="badge ${t.previewUrl ? '' : 'off'}">${t.previewUrl ? 'catálogo' : 'YouTube'}</span>`
       : '<span class="badge own">archivo</span>';
     li.innerHTML = `<span class="n">${i + 1}</span><input value="">${badge}<span class="d">${fmt(t.full || t.duration)}</span>
       <button class="up" aria-label="Subir">${ICON_UP}</button><button class="down" aria-label="Bajar">${ICON_DOWN}</button><button class="rm" aria-label="Quitar">${ICON_X}</button>`;
@@ -102,11 +102,11 @@ function renderTracks(msg) {
     list.appendChild(li);
   });
   $('#ed-count').textContent = tr.length ? `· ${tr.length}` : '';
-  const previews = tr.filter((t) => t.file === false).length;
+  const online = tr.filter((t) => t.file === false).length;
   $('#ed-hint').textContent = msg || (!tr.length
-    ? 'Toca "Buscar en iTunes" para traer portada y canciones (avances de 30 s), o añade tus propios archivos de audio (MP3, M4A, FLAC…).'
-    : previews
-      ? `${previews} ${previews === 1 ? 'canción suena' : 'canciones suenan'} como avance de 30 s. Añade tus archivos con el mismo nombre y ocuparán su lugar completos.`
+    ? 'Toca "Buscar en iTunes" para traer portada y canciones, escribe canciones "Por nombre", o añade tus propios archivos de audio (MP3, M4A, FLAC…).'
+    : online
+      ? `${online} ${online === 1 ? 'canción suena' : 'canciones suenan'} desde internet (YouTube, o el avance de 30 s si no se puede). Tus archivos con el mismo nombre ocupan su lugar y suenan sin conexión.`
       : 'Usa las flechas para reordenar; toca un título para renombrarlo.');
 }
 
@@ -188,6 +188,18 @@ async function addTracks(files) {
   renderTracks();
 }
 
+// canción escrita a mano: suena desde YouTube buscando por su nombre
+$('#ed-add-name').addEventListener('click', () => {
+  if (!state) return;
+  state.draft.tracks.push({ id: 'name-' + db.uid(), title: '', file: false, previewUrl: null, duration: 210 });
+  renderTracks();
+  const inputs = document.querySelectorAll('#ed-track-list input');
+  const last = inputs[inputs.length - 1];
+  last.placeholder = 'Nombre de la canción';
+  last.focus();
+  last.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
 $('#ed-title').addEventListener('input', () => state && renderCover());
 $('#ed-year').addEventListener('input', () => state && renderCover());
 $('#ed-cover-input').addEventListener('change', async (e) => {
@@ -223,6 +235,7 @@ $('#ed-save').addEventListener('click', async () => {
   draft.artist = $('#ed-artist').value.trim() || 'BTS';
   const y = parseInt($('#ed-year').value, 10);
   draft.year = Number.isFinite(y) ? y : '';
+  draft.tracks = draft.tracks.filter((t) => t.file !== false || t.title.trim());
   const keep = new Set(draft.tracks.map((t) => t.id));
   const removed = album.tracks.filter((t) => !keep.has(t.id)).map((t) => t.id);
   const orphanAdded = state.added.filter((id) => !keep.has(id));

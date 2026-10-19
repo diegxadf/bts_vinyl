@@ -30,6 +30,8 @@ export const DEFAULT_ALBUMS = [
   { slug: 'be', title: 'BE', year: 2020, vinyl: '#e9e7e2', palette: { bg: ['#f2f2f0', '#d4d4cf'], fg: '#1e1e1e', accent: '#8a8a8a', style: 'minimal' } },
   { slug: 'butter', title: 'Butter', year: 2021, vinyl: '#f0c22e', palette: { bg: ['#ffe27a', '#f2be12'], fg: '#3a2e00', accent: '#ffffff', style: 'circle' } },
   { slug: 'proof', title: 'Proof', year: 2022, vinyl: '#6a3fb0', palette: { bg: ['#141414', '#000000'], fg: '#ffffff', accent: '#a970ff', style: 'stripes' } },
+  // itunesHint: edición exacta del catálogo de iTunes cuando hay varias con el mismo nombre
+  { slug: 'arirang', title: 'ARIRANG', year: 2026, vinyl: '#121212', itunesHint: 1868481904, palette: { bg: ['#f4efe8', '#d8cfc2'], fg: '#1a1a1a', accent: '#b3122b', style: 'minimal' } },
 ];
 
 const STYLES = ['minimal', 'circle', 'stripes', 'grid', 'dots', 'flower', 'frame', 'grain', 'wings'];

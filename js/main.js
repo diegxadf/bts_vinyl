@@ -262,7 +262,7 @@ function setRecordAlbum(a) {
 let albums = [];
 const sleeveGeo = new THREE.BoxGeometry(S, S, ST);
 
-const persistKeys = ['id', 'title', 'artist', 'year', 'vinyl', 'palette', 'order', 'tracks', 'cover', 'itunesId'];
+const persistKeys = ['id', 'title', 'artist', 'year', 'vinyl', 'palette', 'order', 'tracks', 'cover', 'itunesId', 'itunesHint'];
 const serialize = (a) => Object.fromEntries(persistKeys.map((k) => [k, a[k]]));
 
 async function prepareAlbum(a) {
@@ -295,20 +295,43 @@ function refreshSleeve(a) {
   a._sleeve.material = sleeveMaterials(a);
 }
 
+const LEGACY_DEFAULTS = 17; // álbumes que traía la primera versión, antes de guardar la lista de ids
+let addedDefaults = 0;
+
 async function loadAlbums() {
   let list = await db.getAll('albums');
   const seeded = await db.get('meta', 'seeded');
-  if (!seeded) {
-    const seeds = DEFAULT_ALBUMS.map((a, i) => ({
+  // los álbumes de serie ya ofrecidos no se vuelven a añadir (aunque se hayan borrado);
+  // los nuevos de una actualización (p. ej. ARIRANG) aparecen al final de la colección
+  const known = new Set(seeded ? seeded.ids || DEFAULT_ALBUMS.slice(0, LEGACY_DEFAULTS).map((a) => 'bts-' + a.slug) : []);
+  let order = list.reduce((m, a) => Math.max(m, a.order ?? 0), -1) + 1;
+  const seeds = DEFAULT_ALBUMS
+    .filter((a) => !known.has('bts-' + a.slug) && !list.some((x) => x.id === 'bts-' + a.slug))
+    .map((a) => ({
       id: 'bts-' + a.slug, title: a.title, artist: 'BTS', year: a.year, vinyl: a.vinyl,
-      palette: a.palette, order: i, tracks: [], cover: null,
+      palette: a.palette, order: order++, tracks: [], cover: null, itunesHint: a.itunesHint,
     }));
+  if (seeds.length || !seeded?.ids) {
     await db.putMany('albums', seeds);
-    await db.put('meta', { key: 'seeded', value: true });
+    await db.put('meta', { key: 'seeded', value: true, ids: DEFAULT_ALBUMS.map((a) => 'bts-' + a.slug) });
     list = [...list, ...seeds];
+    if (seeded) addedDefaults = seeds.length;
   }
   list.sort((a, b) => a.order - b.order);
   return list;
+}
+
+/** Aplica portada y canciones del catálogo a un álbum y refresca su funda. */
+async function applyCatalog(a, { match, tracks, cover }) {
+  if (!a.cover) a.cover = cover;
+  a.tracks = catalog.mergeTracks(tracks, a.tracks);
+  a.itunesId = match.id;
+  if (!a.year && match.year) a.year = +match.year;
+  await db.put('albums', serialize(a));
+  await prepareAlbum(a);
+  refreshSleeve(a);
+  vinylCache.delete(a.id);
+  if (recAlbumId === a.id && mode === 'library') setRecordAlbum(a);
 }
 
 // ============================================================
@@ -1110,9 +1133,96 @@ function editAlbum(a) {
 $('#btn-edit').addEventListener('click', () => editAlbum(albums[centerIndex()]));
 $('#btn-edit2').addEventListener('click', () => editAlbum(P.album));
 $('#btn-empty-add').addEventListener('click', () => editAlbum(P.album));
+const nextOrder = () => albums.reduce((m, a) => Math.max(m, a.order ?? 0), -1) + 1;
+
+// ---------- "+ Álbum": explorador de la discografía ----------
+let pkFilter = 'albums';
+function openModal(m) { m.hidden = false; requestAnimationFrame(() => m.classList.add('open')); }
+function closeModal(m) { m.classList.remove('open'); setTimeout(() => { if (!m.classList.contains('open')) m.hidden = true; }, 320); }
+const owned = (it) => albums.some((x) => x.itunesId === it.id || catalog.norm(x.title) === catalog.norm(it.title));
+const cleanName = (t) => t.replace(/\s*-\s*(Single|EP)$/i, '');
+
+async function renderPicker(query) {
+  const box = $('#pk-results');
+  box.innerHTML = '<p class="hint">Cargando…</p>';
+  let list, all = [];
+  try {
+    if (query) list = await catalog.searchAlbums(query);
+    else {
+      all = await catalog.btsAlbums();
+      const seen = new Set();
+      list = all.filter((a) => (pkFilter === 'singles') === catalog.isSingle(a)).filter((a) => {
+        const k = catalog.norm(a.title);
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+  } catch {
+    box.innerHTML = '<p class="hint">Necesitas internet para ver la discografía.</p>';
+    return;
+  }
+  box.innerHTML = list.length ? '' : '<p class="hint">Sin resultados.</p>';
+  list.forEach((it, i) => {
+    const b = document.createElement('button');
+    const have = owned(it);
+    b.className = 'result' + (have ? ' owned' : '');
+    b.style.animationDelay = `${Math.min(i, 24) * 20}ms`;
+    b.innerHTML = '<img alt="" loading="lazy"><span class="rt"></span><span class="rm"></span>';
+    b.querySelector('img').src = it.thumb;
+    b.querySelector('.rt').textContent = cleanName(it.title);
+    b.querySelector('.rm').textContent = have ? '✓ En tu colección' : `${query ? it.artist + ' · ' : ''}${it.year} · ${it.count} canc.`;
+    // en la discografía, si una edición no trae canciones se prueba otra con el mismo nombre
+    const editions = query ? [it] : [it, ...all.filter((x) => x !== it && catalog.norm(x.title) === catalog.norm(it.title))];
+    b.onclick = () => (have ? toast('Ya está en tu colección.') : addFromCatalog(it, editions, b));
+    box.appendChild(b);
+  });
+}
+
+async function addFromCatalog(it, editions, btn) {
+  btn.classList.add('loading');
+  try {
+    // si iTunes no publica sus canciones (pasa con algunos lanzamientos), se añade con portada y sin canciones
+    const found = await catalog.fetchAlbum(editions) || { match: it, tracks: [], cover: await catalog.fetchBlob(it.art), empty: true };
+    const a = {
+      id: db.uid(), ...newAlbumTemplate(nextOrder()),
+      title: cleanName(it.title), artist: it.artist, year: +it.year || '',
+      cover: found.cover, tracks: found.tracks, itunesId: found.empty ? null : found.match.id,
+    };
+    await db.put('albums', serialize(a));
+    await prepareAlbum(a);
+    buildSleeve(a);
+    albums.push(a);
+    car.target = albums.length - 1;
+    closeModal($('#picker'));
+    toast(found.empty ? `"${a.title}" añadido. iTunes aún no tiene sus canciones: puedes ponerlas en "Editar".` : `"${a.title}" añadido a tu colección.`);
+  } catch {
+    btn.classList.remove('loading');
+    toast('No se pudo descargar el álbum. Revisa la conexión.');
+  }
+}
+
 $('#btn-add').addEventListener('click', () => {
-  const order = albums.reduce((m, a) => Math.max(m, a.order ?? 0), -1) + 1;
-  const a = { id: db.uid(), ...newAlbumTemplate(order) };
+  $('#pk-q').value = '';
+  openModal($('#picker'));
+  renderPicker();
+});
+document.querySelectorAll('#picker .tab').forEach((t) => t.addEventListener('click', () => {
+  pkFilter = t.dataset.f;
+  document.querySelectorAll('#picker .tab').forEach((x) => x.classList.toggle('sel', x === t));
+  $('#pk-q').value = '';
+  renderPicker();
+}));
+$('#pk-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = $('#pk-q').value.trim();
+  document.querySelectorAll('#picker .tab').forEach((x) => x.classList.toggle('sel', !q && x.dataset.f === pkFilter));
+  renderPicker(q);
+});
+$('#pk-close').addEventListener('click', () => closeModal($('#picker')));
+$('#pk-empty').addEventListener('click', () => {
+  closeModal($('#picker'));
+  const a = { id: db.uid(), ...newAlbumTemplate(nextOrder()) };
   openEditor(a, { isNew: true, onSave: (d) => saveAlbum(d, true) });
 });
 
@@ -1178,19 +1288,10 @@ async function syncCatalog({ auto = false } = {}) {
   for (const a of todo) {
     toast(`Descargando portadas… ${done + missed + 1} de ${todo.length}`);
     try {
-      const m = await catalog.matchBts(a.title);
-      if (!m) { missed++; continue; }
-      const [blob, tracks] = await Promise.all([catalog.fetchBlob(m.art), catalog.albumTracks(m.id)]);
+      const found = await catalog.fetchAlbum(await catalog.matchBtsAll(a.title, a.itunesHint));
+      if (!found) { missed++; continue; }
       if (P.album === a || !albums.includes(a)) continue;
-      if (!a.cover) a.cover = blob;
-      a.tracks = catalog.mergeTracks(tracks, a.tracks);
-      a.itunesId = m.id;
-      if (!a.year && m.year) a.year = +m.year;
-      await db.put('albums', serialize(a));
-      await prepareAlbum(a);
-      refreshSleeve(a);
-      vinylCache.delete(a.id);
-      if (recAlbumId === a.id && mode === 'library') setRecordAlbum(a);
+      await applyCatalog(a, found);
       done++;
     } catch {
       failed = true;
@@ -1201,7 +1302,10 @@ async function syncCatalog({ auto = false } = {}) {
   $('#btn-sync').classList.remove('busy');
   lastCenter = -2;
   if (failed) toast('Se cortó la conexión con iTunes. Vuelve a tocar "Portadas" para continuar.');
-  else toast(missed ? `Listo: ${done} álbumes actualizados, ${missed} sin coincidencia (búscalos en "Editar").` : `Listo: ${done} álbumes con portada y canciones.`);
+  else {
+    const n = (k) => `${k} ${k === 1 ? 'álbum' : 'álbumes'}`;
+    toast(missed ? `Listo: ${n(done)} con portada y canciones; ${n(missed)} sin coincidencia (búscalos en "Editar").` : `Listo: ${n(done)} con portada y canciones.`);
+  }
   return !failed;
 }
 $('#btn-sync').addEventListener('click', () => syncCatalog());
@@ -1245,7 +1349,7 @@ async function start() {
   setTimeout(() => $('#loading').classList.add('done'), 150);
   // la primera vez, intenta traer las portadas reales automáticamente
   try {
-    if (!(await db.get('meta', 'catalogAuto'))) {
+    if (!(await db.get('meta', 'catalogAuto')) || addedDefaults) {
       await sleep(1200);
       if (await syncCatalog({ auto: true })) await db.put('meta', { key: 'catalogAuto', value: true });
     }

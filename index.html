@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#fcf7f9">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>BTS Vinyl</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- ===== Biblioteca (carrusel 3D) ===== -->
+  <div id="lib-ui" class="ui show">
+    <header class="topbar">
+      <div class="brand"><span class="brand-dot"></span><span><b>bts</b> vinyl</span></div>
+      <div class="actions">
+        <button id="btn-sync" class="pill" title="Descargar portadas y listas de canciones de iTunes">
+          <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg><span>Portadas</span>
+        </button>
+        <button id="btn-add" class="pill">+ Álbum</button>
+        <button id="btn-settings" class="pill icon" title="Ajustes" aria-label="Ajustes">
+          <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+        </button>
+        <button id="btn-fs" class="pill icon" title="Pantalla completa">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+      </div>
+    </header>
+    <button class="nav prev" id="nav-prev" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+    <button class="nav next" id="nav-next" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+    <div class="lib-info">
+      <div id="lib-year" class="eyebrow"></div>
+      <h1 id="lib-title"></h1>
+      <div id="lib-meta" class="meta"></div>
+      <div class="row">
+        <button id="btn-put" class="primary">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>
+          Poner disco
+        </button>
+        <button id="btn-edit" class="pill">Editar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Reproductor ===== -->
+  <aside id="player-ui" class="ui">
+    <div class="pl-top">
+      <button id="btn-back" class="pill"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>Biblioteca</button>
+      <div class="actions">
+        <button id="btn-settings2" class="pill icon" aria-label="Ajustes"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+        <button id="btn-edit2" class="pill">Editar</button>
+      </div>
+    </div>
+    <div class="pl-screen"><div id="yt-player"></div></div>
+    <div class="pl-head">
+      <canvas id="pl-cover" width="256" height="256"></canvas>
+      <div class="pl-head-text">
+        <div id="pl-artist" class="eyebrow">BTS</div>
+        <h2 id="pl-title"></h2>
+        <div id="pl-year" class="meta"></div>
+      </div>
+    </div>
+    <div class="pl-now">
+      <div id="pl-track" class="pl-track">—</div>
+      <input type="range" id="pl-seek" min="0" max="1000" value="0">
+      <div class="pl-times"><span id="pl-cur">0:00</span><span id="pl-dur">0:00</span></div>
+    </div>
+    <div class="pl-controls">
+      <button id="btn-prev" class="ctl" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5l-10 7 10 7z"/></svg></button>
+      <button id="btn-play" class="ctl play" aria-label="Reproducir">
+        <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
+      </button>
+      <button id="btn-next" class="ctl" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z"/></svg></button>
+    </div>
+    <div class="pl-sliders">
+      <label><span>Volumen</span><input type="range" id="vol" min="0" max="1" step="0.01"></label>
+      <label><span>Crujido</span><input type="range" id="crackle" min="0" max="1" step="0.01"></label>
+    </div>
+    <ol id="pl-list"></ol>
+    <div id="pl-empty" hidden>
+      <p>Este álbum todavía no tiene canciones.</p>
+      <button id="btn-empty-add" class="primary">+ Añadir canciones</button>
+    </div>
+  </aside>
+
+  <!-- ===== Editor de álbum ===== -->
+  <div id="editor" class="modal" hidden>
+    <div class="sheet">
+      <header>
+        <h2 id="ed-heading">Editar álbum</h2>
+        <button id="ed-close" class="pill icon" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </header>
+      <div class="ed-body">
+        <div class="ed-cover">
+          <canvas id="ed-cover-preview" width="512" height="512"></canvas>
+          <button id="ed-search-btn" class="primary small">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>Buscar en iTunes
+          </button>
+          <label class="pill small">Subir imagen<input type="file" id="ed-cover-input" accept="image/*" hidden></label>
+          <button id="ed-cover-reset" class="link">Usar portada genérica</button>
+        </div>
+        <div class="ed-fields">
+          <label>Título<input id="ed-title" autocomplete="off"></label>
+          <label>Artista<input id="ed-artist" autocomplete="off"></label>
+          <label>Año<input id="ed-year" inputmode="numeric" autocomplete="off"></label>
+          <div class="field"><span>Color del vinilo</span><div id="ed-swatches" class="swatches"></div></div>
+        </div>
+      </div>
+      <div id="ed-search" class="ed-search" hidden>
+        <form id="ed-search-form" class="ed-search-bar">
+          <input id="ed-search-q" placeholder="Busca un álbum…" autocomplete="off">
+          <button class="pill small" type="submit">Buscar</button>
+        </form>
+        <div id="ed-results" class="ed-results"></div>
+      </div>
+      <div class="ed-tracks">
+        <div class="ed-tracks-head">
+          <h3>Canciones <small id="ed-count"></small></h3>
+          <label class="primary">+ Añadir canciones<input type="file" id="ed-track-input" accept="audio/*" multiple hidden></label>
+        </div>
+        <ol id="ed-track-list"></ol>
+        <p id="ed-hint" class="hint">Elige archivos de audio (MP3, M4A, FLAC, OGG…) guardados en la tablet. Se ordenan por nombre de archivo; puedes reordenarlos y renombrarlos aquí.</p>
+      </div>
+      <footer>
+        <button id="ed-delete" class="danger">Eliminar álbum</button>
+        <div class="spacer"></div>
+        <button id="ed-cancel" class="pill">Cancelar</button>
+        <button id="ed-save" class="primary">Guardar</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- ===== Ajustes ===== -->
+  <div id="settings" class="modal" hidden>
+    <div class="sheet narrow">
+      <header>
+        <h2>Ajustes</h2>
+        <button id="st-close" class="pill icon" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </header>
+      <div class="st-body">
+        <div class="field">
+          <span>Las canciones del catálogo suenan…</span>
+          <label class="choice"><input type="radio" name="st-source" value="youtube">
+            <span><b>Completas desde YouTube</b><small>Necesita internet y una clave gratuita. El video se ve en el panel.</small></span></label>
+          <label class="choice"><input type="radio" name="st-source" value="preview">
+            <span><b>Avances de 30 s (iTunes)</b><small>Sin configurar nada.</small></span></label>
+          <small class="note">Tus propios archivos siempre suenan completos y sin conexión.</small>
+        </div>
+        <div class="field">
+          <span>Clave de la API de YouTube (opcional)</span>
+          <div class="ed-search-bar">
+            <input id="st-key" placeholder="AIza…" autocomplete="off" spellcheck="false">
+            <button id="st-test" class="pill small">Probar</button>
+          </div>
+          <p id="st-status" class="hint"></p>
+        </div>
+        <details class="howto">
+          <summary>Cómo conseguir la clave (5 minutos, gratis)</summary>
+          <ol>
+            <li>Entra en <b>console.cloud.google.com</b> con tu cuenta de Google y crea un proyecto (p. ej. "BTS Vinyl").</li>
+            <li>En <b>APIs y servicios → Biblioteca</b>, busca <b>YouTube Data API v3</b> y pulsa <b>Habilitar</b>.</li>
+            <li>En <b>APIs y servicios → Credenciales</b>, pulsa <b>Crear credenciales → Clave de API</b> y cópiala.</li>
+            <li>Recomendado: en la clave, <b>Restricciones de API → YouTube Data API v3</b>.</li>
+            <li>Pégala arriba, toca <b>Probar</b> y luego <b>Guardar</b>.</li>
+          </ol>
+          <p>Cada canción se busca una sola vez y queda guardada. El cupo gratuito da para unas 100 canciones nuevas al día.</p>
+        </details>
+      </div>
+      <footer>
+        <div class="spacer"></div>
+        <button id="st-save" class="primary">Guardar</button>
+      </footer>
+    </div>
+  </div>
+
+  <div id="toast" role="status"></div>
+  <div id="loading"><div class="spinner"></div><span>Preparando tocadiscos…</span></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

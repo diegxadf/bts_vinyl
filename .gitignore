@@ -1,0 +1,21 @@
+node_modules/
+www/
+subir-a-github/
+.claude/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/release/
+*.keystore
+*.jks
+keystore.properties
+
+# iOS
+ios/App/build/
+ios/App/Pods/
+ios/DerivedData/
+*.mobileprovision
+*.p12

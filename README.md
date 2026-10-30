@@ -1,4 +1,7 @@
-# BTS Vinyl — tocadiscos virtual 3D
+# Army's Vinyl — tocadiscos virtual 3D
+
+> App de fans no oficial. No está afiliada a BTS, BIGHIT MUSIC ni HYBE.
+> Para publicar en Google Play y App Store, ver **PUBLICAR.md**.
 
 App web instalable (PWA) pensada para la Galaxy Tab S9 Ultra. Funciona sin internet una vez instalada.
 Tus portadas y canciones se guardan **dentro de la tablet** (en el almacenamiento del navegador), no se suben a ningún sitio.

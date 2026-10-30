@@ -1,7 +1,7 @@
 {
-  "name": "BTS Vinyl",
-  "short_name": "BTS Vinyl",
-  "description": "Tocadiscos virtual 3D para tu colección de BTS.",
+  "name": "Army's Vinyl",
+  "short_name": "Army's Vinyl",
+  "description": "Tocadiscos virtual 3D para tu colección de música. App de fans no oficial.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

@@ -1,0 +1,20 @@
+{
+  "appId": "io.github.diegxadf.armysvinyl",
+  "appName": "Army's Vinyl",
+  "webDir": "www",
+  "backgroundColor": "#fcf7f9",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#fcf7f9"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#fcf7f9",
+      "showSpinner": false
+    }
+  }
+}

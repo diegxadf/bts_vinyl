@@ -1,0 +1,64 @@
+# Compila la app de Android en los servidores de GitHub (no hace falta Android Studio).
+# - Siempre: un APK de prueba para instalar directamente en un móvil o tablet.
+# - Si están los "secrets" de firma: el paquete .aab firmado para subir a Google Play.
+name: Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['index.html', 'css/**', 'js/**', 'vendor/**', 'icons/**', 'android/**', 'capacitor.config.json', 'package*.json', '.github/workflows/android.yml']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      HAS_KEY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Preparar la app web
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: APK de prueba
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: armys-vinyl-prueba-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+
+      - name: Paquete firmado para Google Play
+        if: ${{ env.HAS_KEY == 'true' }}
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/upload.keystore"
+          ./gradlew bundleRelease --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('android/app/build/outputs/bundle/release/*.aab') != '' }}
+        with:
+          name: armys-vinyl-google-play-aab
+          path: android/app/build/outputs/bundle/release/*.aab

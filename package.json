@@ -1,0 +1,25 @@
+{
+  "name": "armys-vinyl",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Army's Vinyl: tocadiscos virtual 3D. App de fans no oficial.",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build-www.mjs",
+    "sync": "npm run build && npx cap sync",
+    "serve": "node tools/serve.mjs 8080",
+    "icons": "node tools/make-icons.mjs"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0"
+  },
+  "dependencies": {
+    "@capacitor-community/keep-awake": "^8.0.1",
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
+  }
+}

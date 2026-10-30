@@ -219,18 +219,31 @@ export function makeVinyl(album, cover, { rStart = 0.945, rEnd = 0.44, rLabel = 
 /** Reflejo fijo en forma de abanico, como la luz sobre un vinilo real. */
 export function makeSheen() {
   const N = 1024, C = N / 2, c = canvas(N), g = c.getContext('2d');
-  const cg = g.createConicGradient(-Math.PI * 0.78, C, C);
-  const w = 'rgba(255,255,255,';
-  cg.addColorStop(0.0, w + '0)');
-  cg.addColorStop(0.05, w + '0.55)');
-  cg.addColorStop(0.08, w + '0.75)');
-  cg.addColorStop(0.13, w + '0)');
-  cg.addColorStop(0.5, w + '0)');
-  cg.addColorStop(0.55, w + '0.45)');
-  cg.addColorStop(0.58, w + '0.6)');
-  cg.addColorStop(0.63, w + '0)');
-  cg.addColorStop(1, w + '0)');
-  g.fillStyle = cg; g.fillRect(0, 0, N, N);
+  const start = -Math.PI * 0.78;
+  const stops = [[0, 0], [0.05, 0.55], [0.08, 0.75], [0.13, 0], [0.5, 0], [0.55, 0.45], [0.58, 0.6], [0.63, 0], [1, 0]];
+  if (g.createConicGradient) {
+    const cg = g.createConicGradient(start, C, C);
+    for (const [o, a] of stops) cg.addColorStop(o, `rgba(255,255,255,${a})`);
+    g.fillStyle = cg; g.fillRect(0, 0, N, N);
+  } else {
+    // navegadores antiguos (iOS < 16.1, Android WebView < 99): mismos abanicos dibujados por sectores
+    const alphaAt = (t) => {
+      for (let i = 1; i < stops.length; i++) {
+        const [o1, a1] = stops[i], [o0, a0] = stops[i - 1];
+        if (t <= o1) return a0 + ((a1 - a0) * (t - o0)) / (o1 - o0 || 1);
+      }
+      return 0;
+    };
+    const steps = 360;
+    for (let i = 0; i < steps; i++) {
+      const a = alphaAt((i + 0.5) / steps);
+      if (a <= 0) continue;
+      g.fillStyle = `rgba(255,255,255,${a})`;
+      g.beginPath(); g.moveTo(C, C);
+      g.arc(C, C, C * 1.5, start + (i / steps) * Math.PI * 2, start + ((i + 1.05) / steps) * Math.PI * 2);
+      g.closePath(); g.fill();
+    }
+  }
   // más fuerte hacia el borde
   g.globalCompositeOperation = 'destination-in';
   const rg = g.createRadialGradient(C, C, 0, C, C, C);

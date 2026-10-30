@@ -6,16 +6,13 @@
   <meta name="theme-color" content="#fcf7f9">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>BTS Vinyl</title>
+  <title>Army's Vinyl</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap">
   <link rel="stylesheet" href="css/style.css">
-  <script type="importmap">
-    { "imports": { "three": "./vendor/three.module.js" } }
-  </script>
 </head>
 <body>
   <canvas id="scene"></canvas>
@@ -23,12 +20,14 @@
   <!-- ===== Biblioteca (carrusel 3D) ===== -->
   <div id="lib-ui" class="ui show">
     <header class="topbar">
-      <div class="brand"><span class="brand-dot"></span><span><b>bts</b> vinyl</span></div>
+      <div class="brand"><span class="brand-dot"></span><span><b>army's</b> vinyl</span></div>
       <div class="actions">
         <button id="btn-sync" class="pill" title="Descargar portadas y listas de canciones de iTunes">
           <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 20h14"/></svg><span>Portadas</span>
         </button>
-        <button id="btn-add" class="pill">+ Álbum</button>
+        <button id="btn-add" class="pill" aria-label="Añadir álbum">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Álbum</span>
+        </button>
         <button id="btn-settings" class="pill icon" title="Ajustes" aria-label="Ajustes">
           <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
         </button>
@@ -231,6 +230,8 @@
             </div></div>
           <div class="opt col"><span><b>Tamaño del texto</b></span>
             <div class="seg" data-k="textSize"><button data-v="normal">Normal</button><button data-v="large">Grande</button></div></div>
+          <div class="opt col"><span><b>Calidad gráfica</b><small>"Automática" baja la resolución si el dispositivo va justo. "Ahorro" gasta menos batería.</small></span>
+            <div class="seg" data-k="quality"><button data-v="auto">Automática</button><button data-v="high">Alta</button><button data-v="low">Ahorro</button></div></div>
           <div class="opt col"><span><b>Animaciones</b><small>"Ágiles" acorta las transiciones y quita el balanceo de las fundas.</small></span>
             <div class="seg" data-k="motion"><button data-v="full">Completas</button><button data-v="reduced">Ágiles</button></div></div>
         </section>
@@ -243,6 +244,8 @@
             <button id="st-sync" class="pill small">Buscar ahora</button></div>
           <div class="opt col"><span><b>Videos de YouTube encontrados</b><small>Olvida los videos ya elegidos para que se vuelvan a buscar (útil si alguno no era el correcto).</small></span>
             <button id="st-ytclear" class="pill small">Volver a buscar videos</button></div>
+          <div class="opt col"><span><b>Tutorial</b><small>Vuelve a mostrar la guía de la primera vez.</small></span>
+            <button id="st-tour" class="pill small">Ver el tutorial</button></div>
           <p id="st-storage" class="hint"></p>
         </section>
 
@@ -267,7 +270,7 @@
         <details class="howto">
           <summary>Cómo conseguir la clave (5 minutos, gratis)</summary>
           <ol>
-            <li>Entra en <b>console.cloud.google.com</b> con tu cuenta de Google y crea un proyecto (p. ej. "BTS Vinyl").</li>
+            <li>Entra en <b>console.cloud.google.com</b> con tu cuenta de Google y crea un proyecto (p. ej. "Army's Vinyl").</li>
             <li>En <b>APIs y servicios → Biblioteca</b>, busca <b>YouTube Data API v3</b> y pulsa <b>Habilitar</b>.</li>
             <li>En <b>APIs y servicios → Credenciales</b>, pulsa <b>Crear credenciales → Clave de API</b> y cópiala.</li>
             <li>Recomendado: en la clave, <b>Restricciones de API → YouTube Data API v3</b>.</li>
@@ -275,6 +278,11 @@
           </ol>
           <p>Cada canción se busca una sola vez y queda guardada. El cupo gratuito da para unas 100 canciones nuevas al día.</p>
         </details>
+        <p class="hint legal">Esta app usa YouTube API Services:
+          <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener">Términos de YouTube</a> ·
+          <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacidad de Google</a> ·
+          <a href="https://diegxadf.github.io/bts_vinyl/privacidad.html" target="_blank" rel="noopener">Privacidad de Army's Vinyl</a>.
+          App de fans no oficial, sin relación con BTS, BIGHIT MUSIC ni HYBE.</p>
         </section>
       </div>
       <footer>
@@ -282,6 +290,64 @@
         <div class="spacer"></div>
         <button id="st-save" class="primary">Listo</button>
       </footer>
+    </div>
+  </div>
+
+  <!-- ===== Bienvenida (primera vez) ===== -->
+  <div id="welcome" class="modal" hidden>
+    <div class="sheet welcome-sheet">
+      <section class="wl-step wl-hello" data-step="hello">
+        <div class="wl-disc"><span></span></div>
+        <h1>Army's Vinyl</h1>
+        <p>Tu tocadiscos virtual en 3D. Empecemos eligiendo los primeros discos de tu colección.</p>
+        <button id="wl-start" class="primary">Elegir mis discos</button>
+        <button id="wl-later" class="link">Empezar con la colección vacía</button>
+        <small class="note">App de fans no oficial. No está afiliada a BTS, BIGHIT MUSIC ni HYBE.</small>
+      </section>
+      <section class="wl-step" data-step="pick" hidden>
+        <header>
+          <div><h2>Elige tus primeros discos</h2><small id="wl-count" class="meta">Toca las portadas para seleccionarlas.</small></div>
+        </header>
+        <div class="pk-body">
+          <div class="wl-tabs-row">
+            <div class="pk-tabs">
+              <button class="tab sel" data-f="albums">Álbumes de BTS</button>
+              <button class="tab" data-f="singles">Singles y EP</button>
+              <button class="tab" data-f="solo">Solistas</button>
+            </div>
+            <button id="wl-all" class="link">Seleccionar todos</button>
+          </div>
+          <form id="wl-form" class="ed-search-bar">
+            <input id="wl-q" placeholder="Buscar otros artistas o discos…" autocomplete="off">
+            <button class="pill small" type="submit">Buscar</button>
+          </form>
+          <div id="wl-results" class="ed-results pk-results"></div>
+        </div>
+        <footer>
+          <button id="wl-skip" class="link">Ahora no</button>
+          <div class="spacer"></div>
+          <button id="wl-add" class="primary" disabled>Añadir</button>
+        </footer>
+      </section>
+      <section class="wl-step wl-hello" data-step="busy" hidden>
+        <div class="spinner"></div>
+        <h2 id="wl-busy">Preparando tus discos…</h2>
+        <p class="meta">Descargando portadas y canciones.</p>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===== Tutorial ===== -->
+  <div id="tour" hidden>
+    <div class="tour-ring"></div>
+    <div class="tour-card" role="dialog" aria-live="polite">
+      <div class="tour-dots"></div>
+      <h3></h3>
+      <p></p>
+      <div class="tour-row">
+        <button id="tour-skip" class="link">Saltar</button>
+        <button id="tour-next" class="primary small">Siguiente</button>
+      </div>
     </div>
   </div>
 

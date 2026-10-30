@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from '../vendor/three.module.js';
 import { RoundedBoxGeometry } from '../vendor/addons/RoundedBoxGeometry.js';
 import { RoomEnvironment } from '../vendor/addons/RoomEnvironment.js';
 import * as db from './db.js';
@@ -223,7 +223,7 @@ const startHit = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16), a
 startHit.position.set(0, 0.1, 0);
 btnGroup.add(startHit);
 // placa
-const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.25), new THREE.MeshStandardMaterial({ map: texFrom(T.makePlate('BTS · ARMY')), metalness: 0.4, roughness: 0.4 }));
+const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.15, 0.25), new THREE.MeshStandardMaterial({ map: texFrom(T.makePlate("ARMY'S VINYL")), metalness: 0.4, roughness: 0.4 }));
 plate.rotation.x = -Math.PI / 2;
 plate.position.set(0.6, TOP + 0.003, PL_D / 2 - 0.3);
 tt.add(plate);
@@ -298,10 +298,18 @@ function refreshSleeve(a) {
 
 const LEGACY_DEFAULTS = 17; // álbumes que traía la primera versión, antes de guardar la lista de ids
 let addedDefaults = 0;
+let firstRun = false;
 
 async function loadAlbums() {
   let list = await db.getAll('albums');
-  const seeded = await db.get('meta', 'seeded');
+  let seeded = await db.get('meta', 'seeded');
+  // instalación nueva: la colección empieza vacía y la bienvenida deja elegir los primeros discos
+  // (las colecciones de versiones anteriores, que traían la discografía precargada, se respetan)
+  if (!seeded && !list.length) {
+    seeded = { key: 'seeded', value: true, ids: DEFAULT_ALBUMS.map((a) => 'bts-' + a.slug) };
+    await db.put('meta', seeded);
+    firstRun = true;
+  }
   // los álbumes de serie ya ofrecidos no se vuelven a añadir (aunque se hayan borrado);
   // los nuevos de una actualización (p. ej. ARIRANG) aparecen al final de la colección
   const known = new Set(seeded ? seeded.ids || DEFAULT_ALBUMS.slice(0, LEGACY_DEFAULTS).map((a) => 'bts-' + a.slug) : []);
@@ -423,10 +431,22 @@ function updateCarousel(dt) {
 // ============================================================
 // Cámara
 // ============================================================
+// El panel cambia de tamaño según el dispositivo (CSS): se mide de verdad, con margen.
+const panelEl = $('#player-ui'), libInfoEl = $('.lib-info');
+let panelBox = null;
+function measureUI() {
+  const cs = getComputedStyle(panelEl);
+  panelBox = {
+    w: panelEl.offsetWidth + (parseFloat(cs.right) || 0) + 16,
+    h: panelEl.offsetHeight + (parseFloat(cs.bottom) || 0) + 16,
+    info: libInfoEl.offsetHeight + (parseFloat(getComputedStyle(libInfoEl).bottom) || 0) + 12,
+  };
+}
 function panelLayout() {
   const W = innerWidth, H = innerHeight;
-  if (W >= H) { const P = clamp(W * 0.34, 320, 430) + 28; return { availW: W - P, availH: H, dx: P / 2, dy: 0 }; }
-  const P = H * 0.42 + 24;
+  if (!panelBox) measureUI();
+  if (W >= H) { const P = Math.min(panelBox.w, W * 0.6); return { availW: W - P, availH: H, dx: P / 2, dy: 0 }; }
+  const P = Math.min(panelBox.h, H * 0.65);
   return { availW: W, availH: H - P, dx: 0, dy: P / 2 };
 }
 function fitDistance(halfW, halfH, availW, availH, fh) {
@@ -438,15 +458,20 @@ const PL_DIR = new THREE.Vector3(0.04, 1.45, 1).normalize();
 function camConfig(kind) {
   const W = innerWidth, H = innerHeight;
   if (kind === 'lib') {
-    const dy = Math.min(125, H * 0.14);
+    if (!panelBox) measureUI();
+    const dy = clamp(panelBox.info / 2, 40, H * 0.22); // deja libre la zona del título y los botones
     const portrait = W < H;
     const target = new THREE.Vector3(portrait ? 0 : 0.6, CAR_Y + 0.05, CAR_Z);
     const d = fitDistance(portrait ? 1.9 : 3.4, 2.15, W, H - 2 * dy, H + 2 * dy);
     return { pos: target.clone().addScaledVector(LIB_DIR, d), target, dx: 0, dy };
   }
   const L = panelLayout();
-  const target = new THREE.Vector3(-1.05, 0.35, 0.3);
-  const d = fitDistance(4.6, 2.1, L.availW, L.availH, H + 2 * L.dy);
+  // en vertical no caben funda y tocadiscos uno al lado del otro: se encuadra el tocadiscos
+  const narrow = L.availW / L.availH < 0.9 || L.availW < 640;
+  const target = narrow ? new THREE.Vector3(0.45, 0.35, 0.25) : new THREE.Vector3(-1.05, 0.35, 0.3);
+  const d = narrow
+    ? fitDistance(2.6, H < 520 ? 2.8 : 2.5, L.availW, L.availH, H + 2 * L.dy)
+    : fitDistance(4.6, 2.1, L.availW, L.availH, H + 2 * L.dy);
   return { pos: target.clone().addScaledVector(PL_DIR, d), target, dx: L.dx, dy: L.dy };
 }
 const _tgt = new THREE.Vector3();
@@ -850,6 +875,8 @@ async function enterPlayer(i) {
   });
   mode = 'player';
   $('#player-ui').classList.add('show');
+  if (!settings.tours?.player) { await sleep(400); await runPlayerTour(); }
+  if (mode !== 'player' || P.album !== a) return;
   if (!a.tracks.length) toast('Este álbum aún no tiene canciones: toca "Editar" para añadirlas.');
   else if (settings.autoplay) playFrom(0, 0);
   else toast('Toca ▶ o lleva el brazo al disco para empezar.');
@@ -982,7 +1009,7 @@ function updateLibInfo() {
   if (!a) {
     $('#lib-title').textContent = 'Tu colección está vacía';
     $('#lib-year').textContent = '';
-    $('#lib-meta').textContent = 'Toca "+ Álbum" para crear uno.';
+    $('#lib-meta').textContent = 'Toca «+» arriba para añadir tus primeros discos.';
     $('#btn-put').disabled = $('#btn-edit').disabled = true;
     return;
   }
@@ -1074,6 +1101,11 @@ if ('mediaSession' in navigator) {
 let wakeLock = null;
 async function keepAwake(on) {
   if (!settings.keepAwake) on = false;
+  // en la app nativa el WebView no tiene Wake Lock: se usa el plugin KeepAwake
+  if (Native.KeepAwake) {
+    try { await (on ? Native.KeepAwake.keepAwake() : Native.KeepAwake.allowSleep()); } catch { /* ignore */ }
+    return;
+  }
   try {
     if (on && !wakeLock && navigator.wakeLock) {
       wakeLock = await navigator.wakeLock.request('screen');
@@ -1091,9 +1123,11 @@ const DEFAULTS = {
   // reproducción
   autoplay: false, autoAdvance: true, endAction: 'stop', rpm: '33', needleSfx: true, keepAwake: true,
   // apariencia
-  theme: 'light', accent: 'pink', deck: 'pink', textSize: 'normal', motion: 'full',
+  theme: 'light', accent: 'pink', deck: 'pink', textSize: 'normal', motion: 'full', quality: 'auto',
   // biblioteca
   sort: 'custom',
+  // tutoriales ya vistos
+  tours: {},
 };
 const settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem('bts-vinyl-settings') || '{}')); } catch { /* ignore */ }
@@ -1144,7 +1178,8 @@ function applySettings() {
   plinthMat.color.set(DECKS[settings.deck] ?? DECKS.pink);
   plinthMat.roughness = settings.deck === 'black' ? 0.3 : 0.4;
   sfx.setEnabled(settings.needleSfx);
-  spinRate = ((settings.rpm === '45' ? 45 : 100 / 3) / 60) * Math.PI * 2;
+  applyQuality();
+  spinRate =((settings.rpm === '45' ? 45 : 100 / 3) / 60) * Math.PI * 2;
   syncSettingsUI();
 }
 
@@ -1234,7 +1269,7 @@ $('#st-ytclear').addEventListener('click', async () => {
 });
 $('#st-reset').addEventListener('click', () => {
   if (!confirm('¿Volver a los ajustes de fábrica? Tu colección no se borra.')) return;
-  Object.assign(settings, DEFAULTS, { ytKey: settings.ytKey, vol: settings.vol, crackle: settings.crackle });
+  Object.assign(settings, DEFAULTS, { ytKey: settings.ytKey, vol: settings.vol, crackle: settings.crackle, tours: settings.tours });
   saveSettings();
   applySettings();
   sortAlbums();
@@ -1301,6 +1336,32 @@ $('#btn-fs').addEventListener('click', () => {
   if (document.fullscreenElement) document.exitFullscreen?.();
   else document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => toast('Pantalla completa no disponible aquí.'));
 });
+// Sin API de pantalla completa (iPhone) o ya a pantalla completa (app instalada / nativa): fuera el botón.
+const isNative = !!window.Capacitor?.isNativePlatform?.();
+const standalone = isNative || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone;
+if (!document.fullscreenEnabled || standalone) $('#btn-fs').hidden = true;
+document.documentElement.classList.toggle('native', isNative);
+
+// ---------- integración nativa (Android / iOS con Capacitor) ----------
+// Capacitor expone los plugins nativos en window.Capacitor.Plugins; en la web no existen y no se usa nada.
+const Native = (isNative && window.Capacitor.Plugins) || {};
+if (isNative) {
+  Native.StatusBar?.hide?.().catch(() => {}); // pantalla completa
+  Native.SplashScreen?.hide?.().catch(() => {});
+  // botón "atrás" de Android: cierra lo que esté abierto, vuelve a la biblioteca o minimiza la app
+  Native.App?.addListener?.('backButton', () => {
+    if (!$('#tour').hidden) { $('#tour-skip').click(); return; }
+    if (!$('#editor').hidden) { $('#ed-cancel').click(); return; }
+    const open = [...document.querySelectorAll('.modal')].find((m) => !m.hidden && m.id !== 'editor');
+    if (open?.id === 'welcome') {
+      if (!document.querySelector('#welcome [data-step=pick]').hidden) wlStep('hello');
+      return;
+    }
+    if (open) { closeModal(open); return; }
+    if (mode === 'player') { goLibrary(); return; }
+    Native.App.minimizeApp?.().catch(() => {});
+  });
+}
 
 // ============================================================
 // Edición de álbumes
@@ -1321,72 +1382,90 @@ function closeModal(m) { m.classList.remove('open'); setTimeout(() => { if (!m.c
 const owned = (it) => albums.some((x) => x.itunesId === it.id || catalog.releaseKey(x.title) === catalog.releaseKey(it.title));
 const cleanName = (t) => t.replace(/\s*-\s*(Single|EP)$/i, '');
 
+/**
+ * Lista de lanzamientos del catálogo para mostrar en tarjetas.
+ * filter: 'albums' | 'singles' | 'solo'; query: búsqueda libre (tiene prioridad).
+ * Devuelve [{ it, editions }]: editions son las ediciones con el mismo nombre, por si una no trae canciones.
+ */
+async function catalogList(filter, query) {
+  if (query) {
+    // primero lo que coincide en las discografías de BTS y de los miembros, luego el resto de iTunes
+    const q = catalog.norm(query);
+    const [bts, solo, remote] = await Promise.all([catalog.btsAlbums(), catalog.soloAlbums(), catalog.searchAlbums(query)]);
+    const exact = (a) => catalog.releaseKey(a.title) === catalog.releaseKey(query) || catalog.releaseKey(`${a.member || a.artist} ${a.title}`) === catalog.releaseKey(query);
+    const local = [...bts, ...solo]
+      .filter((a) => catalog.norm(a.title).includes(q) || catalog.norm(`${a.member || a.artist} ${a.title}`).includes(q))
+      .sort((a, b) => exact(b) - exact(a) || catalog.isVariant(a) - catalog.isVariant(b) || b.count - a.count);
+    const ids = new Set(local.map((a) => a.id));
+    return [...local, ...remote.filter((a) => !ids.has(a.id))].map((it) => ({ it, editions: [it] }));
+  }
+  const all = filter === 'solo' ? await catalog.soloAlbums() : await catalog.btsAlbums();
+  // una tarjeta por lanzamiento: la edición con más canciones
+  const best = new Map();
+  const shown = filter === 'solo' ? all.filter((x) => !catalog.isVariant(x)) : all.filter((x) => (filter === 'singles') === catalog.isSingle(x));
+  for (const a of shown) {
+    const k = catalog.releaseKey(a.title) + (a.member || '');
+    if (!best.has(k) || best.get(k).count < a.count) best.set(k, a);
+  }
+  return [...best.values()].map((it) => ({
+    it,
+    editions: [it, ...all.filter((x) => x !== it && x.member === it.member && catalog.releaseKey(x.title) === catalog.releaseKey(it.title))],
+  }));
+}
+
+/** Tarjeta de un lanzamiento (portada, título y datos). */
+function releaseCard({ it }, i, showArtist) {
+  const b = document.createElement('button');
+  b.className = 'result';
+  b.style.animationDelay = `${Math.min(i, 24) * 20}ms`;
+  b.innerHTML = '<img alt="" loading="lazy"><span class="rt"></span><span class="rm"></span>';
+  b.querySelector('img').src = it.thumb;
+  b.querySelector('.rt').textContent = cleanName(it.title);
+  b.querySelector('.rm').textContent = `${showArtist || it.member ? (it.member || it.artist) + ' · ' : ''}${it.year} · ${it.count} canc.`;
+  return b;
+}
+
 async function renderPicker(query) {
   const box = $('#pk-results');
   box.innerHTML = '<p class="hint">Cargando…</p>';
-  let list, all = [];
-  try {
-    if (query) {
-      // primero lo que coincide en las discografías de BTS y de los miembros, luego el resto de iTunes
-      const q = catalog.norm(query);
-      const [bts, solo, remote] = await Promise.all([catalog.btsAlbums(), catalog.soloAlbums(), catalog.searchAlbums(query)]);
-      const exact = (a) => catalog.releaseKey(a.title) === catalog.releaseKey(query) || catalog.releaseKey(`${a.member || a.artist} ${a.title}`) === catalog.releaseKey(query);
-      const local = [...bts, ...solo]
-        .filter((a) => catalog.norm(a.title).includes(q) || catalog.norm(`${a.member || a.artist} ${a.title}`).includes(q))
-        .sort((a, b) => exact(b) - exact(a) || catalog.isVariant(a) - catalog.isVariant(b) || b.count - a.count);
-      const ids = new Set(local.map((a) => a.id));
-      list = [...local, ...remote.filter((a) => !ids.has(a.id))];
-    } else {
-      all = pkFilter === 'solo' ? await catalog.soloAlbums() : await catalog.btsAlbums();
-      // una tarjeta por lanzamiento: la edición con más canciones
-      const best = new Map();
-      const shown = pkFilter === 'solo' ? all.filter((x) => !catalog.isVariant(x)) : all.filter((x) => (pkFilter === 'singles') === catalog.isSingle(x));
-      for (const a of shown) {
-        const k = catalog.releaseKey(a.title) + (a.member || '');
-        if (!best.has(k) || best.get(k).count < a.count) best.set(k, a);
-      }
-      list = [...best.values()];
-    }
-  } catch {
-    box.innerHTML = '<p class="hint">Necesitas internet para ver la discografía.</p>';
-    return;
-  }
+  let list;
+  try { list = await catalogList(pkFilter, query); }
+  catch { box.innerHTML = '<p class="hint">Necesitas internet para ver la discografía.</p>'; return; }
   box.innerHTML = list.length ? '' : '<p class="hint">Sin resultados.</p>';
-  list.forEach((it, i) => {
-    const b = document.createElement('button');
-    const have = owned(it);
-    b.className = 'result' + (have ? ' owned' : '');
-    b.style.animationDelay = `${Math.min(i, 24) * 20}ms`;
-    b.innerHTML = '<img alt="" loading="lazy"><span class="rt"></span><span class="rm"></span>';
-    b.querySelector('img').src = it.thumb;
-    b.querySelector('.rt').textContent = cleanName(it.title);
-    b.querySelector('.rm').textContent = have ? '✓ En tu colección' : `${query || it.member ? (it.member || it.artist) + ' · ' : ''}${it.year} · ${it.count} canc.`;
-    // en la discografía, si una edición no trae canciones se prueba otra con el mismo nombre
-    const editions = query ? [it] : [it, ...all.filter((x) => x !== it && x.member === it.member && catalog.releaseKey(x.title) === catalog.releaseKey(it.title))];
-    b.onclick = () => (have ? toast('Ya está en tu colección.') : addFromCatalog(it, editions, b));
+  list.forEach((entry, i) => {
+    const b = releaseCard(entry, i, !!query);
+    const have = owned(entry.it);
+    if (have) { b.classList.add('owned'); b.querySelector('.rm').textContent = '✓ En tu colección'; }
+    b.onclick = () => (have ? toast('Ya está en tu colección.') : addFromCatalog(entry.it, entry.editions, b));
     box.appendChild(b);
   });
+}
+
+/** Crea y guarda un álbum a partir del catálogo (portada, canciones y extras de la edición física). */
+async function createFromCatalog(it, editions) {
+  // si iTunes no publica sus canciones (pasa con algunos lanzamientos), se añade con portada y sin canciones
+  const found = await catalog.fetchAlbum(editions) || { match: it, tracks: [], cover: await catalog.fetchBlob(it.art), empty: true };
+  const a = {
+    id: db.uid(), ...newAlbumTemplate(nextOrder()),
+    title: cleanName(it.title), artist: it.artist, year: +it.year || '',
+    cover: found.cover, tracks: found.tracks, itunesId: found.empty ? null : found.match.id,
+  };
+  const extra = catalog.applyExtras(a);
+  await db.put('albums', serialize(a));
+  await prepareAlbum(a);
+  buildSleeve(a);
+  albums.push(a);
+  return { album: a, empty: found.empty && !extra };
 }
 
 async function addFromCatalog(it, editions, btn) {
   btn.classList.add('loading');
   try {
-    // si iTunes no publica sus canciones (pasa con algunos lanzamientos), se añade con portada y sin canciones
-    const found = await catalog.fetchAlbum(editions) || { match: it, tracks: [], cover: await catalog.fetchBlob(it.art), empty: true };
-    const a = {
-      id: db.uid(), ...newAlbumTemplate(nextOrder()),
-      title: cleanName(it.title), artist: it.artist, year: +it.year || '',
-      cover: found.cover, tracks: found.tracks, itunesId: found.empty ? null : found.match.id,
-    };
-    const extra = catalog.applyExtras(a);
-    await db.put('albums', serialize(a));
-    await prepareAlbum(a);
-    buildSleeve(a);
-    albums.push(a);
+    const { album: a, empty } = await createFromCatalog(it, editions);
     sortAlbums();
     car.target = albums.indexOf(a);
     closeModal($('#picker'));
-    toast(found.empty && !extra ? `"${a.title}" añadido. iTunes aún no tiene sus canciones: puedes ponerlas en "Editar".` : `"${a.title}" añadido a tu colección.`);
+    toast(empty ? `"${a.title}" añadido. iTunes aún no tiene sus canciones: puedes ponerlas en "Editar".` : `"${a.title}" añadido a tu colección.`);
   } catch {
     btn.classList.remove('loading');
     toast('No se pudo descargar el álbum. Revisa la conexión.');
@@ -1503,10 +1582,224 @@ async function syncCatalog({ auto = false } = {}) {
 $('#btn-sync').addEventListener('click', () => syncCatalog());
 
 // ============================================================
+// Bienvenida: la primera vez se eligen los primeros discos
+// ============================================================
+const wl = { filter: 'albums', picked: new Map(), list: [] };
+function wlStep(name) {
+  document.querySelectorAll('#welcome .wl-step').forEach((s) => { s.hidden = s.dataset.step !== name; });
+}
+function wlCount() {
+  const n = wl.picked.size;
+  $('#wl-count').textContent = n ? `${n} ${n === 1 ? 'disco seleccionado' : 'discos seleccionados'}` : 'Toca las portadas para seleccionarlas.';
+  $('#wl-add').disabled = !n;
+  $('#wl-add').textContent = n ? `Añadir ${n}` : 'Añadir';
+}
+async function wlRender(query) {
+  const box = $('#wl-results');
+  box.innerHTML = '<p class="hint">Cargando…</p>';
+  try { wl.list = await catalogList(wl.filter, query); }
+  catch { box.innerHTML = '<p class="hint">Necesitas internet para ver los discos. Conéctate y vuelve a intentarlo.</p>'; return; }
+  box.innerHTML = wl.list.length ? '' : '<p class="hint">Sin resultados.</p>';
+  wl.list.forEach((entry, i) => {
+    const b = releaseCard(entry, i, !!query);
+    b.classList.toggle('picked', wl.picked.has(entry.it.id));
+    b.onclick = () => {
+      if (wl.picked.has(entry.it.id)) wl.picked.delete(entry.it.id); else wl.picked.set(entry.it.id, entry);
+      b.classList.toggle('picked', wl.picked.has(entry.it.id));
+      wlCount();
+    };
+    box.appendChild(b);
+  });
+  $('#wl-all').hidden = !!query || !wl.list.length;
+}
+function showWelcome() {
+  wlStep('hello');
+  openModal($('#welcome'));
+}
+async function finishWelcome() {
+  settings.welcomed = true;
+  saveSettings();
+  closeModal($('#welcome'));
+  lastCenter = -2;
+  updateLibInfo();
+  await sleep(500);
+  if (!settings.tours?.lib) runLibraryTour();
+}
+
+$('#wl-start').addEventListener('click', () => { wlStep('pick'); wlCount(); wlRender(); });
+$('#wl-later').addEventListener('click', finishWelcome);
+$('#wl-skip').addEventListener('click', finishWelcome);
+document.querySelectorAll('#welcome .tab').forEach((t) => t.addEventListener('click', () => {
+  wl.filter = t.dataset.f;
+  document.querySelectorAll('#welcome .tab').forEach((x) => x.classList.toggle('sel', x === t));
+  $('#wl-q').value = '';
+  wlRender();
+}));
+$('#wl-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = $('#wl-q').value.trim();
+  document.querySelectorAll('#welcome .tab').forEach((x) => x.classList.toggle('sel', !q && x.dataset.f === wl.filter));
+  wlRender(q);
+});
+$('#wl-all').addEventListener('click', () => {
+  const all = wl.list.every((e) => wl.picked.has(e.it.id));
+  for (const e of wl.list) { if (all) wl.picked.delete(e.it.id); else wl.picked.set(e.it.id, e); }
+  document.querySelectorAll('#wl-results .result').forEach((b, i) => b.classList.toggle('picked', !all && !!wl.list[i]));
+  wlCount();
+});
+$('#wl-add').addEventListener('click', async () => {
+  const chosen = [...wl.picked.values()];
+  wlStep('busy');
+  let done = 0, failed = 0;
+  for (const { it, editions } of chosen) {
+    $('#wl-busy').textContent = `Preparando tus discos… ${done + failed + 1} de ${chosen.length}`;
+    try { await createFromCatalog(it, editions); done++; } catch { failed++; }
+  }
+  sortAlbums();
+  car.target = car.scroll = 0;
+  if (albums[0]) setRecordAlbum(albums[0]);
+  if (failed) toast(`${failed} ${failed === 1 ? 'disco no se pudo' : 'discos no se pudieron'} descargar. Puedes añadirlos luego con «+».`);
+  finishWelcome();
+});
+
+// ============================================================
+// Tutorial: un aro señala cada elemento y una tarjeta lo explica
+// ============================================================
+const _tv = new THREE.Vector3();
+function rectOf(sel) {
+  const el = $(sel);
+  if (!el || el.hidden) return null;
+  const r = el.getBoundingClientRect();
+  return r.width && r.height ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+}
+function rectOfWorld(obj, size) {
+  obj.getWorldPosition(_tv).project(camera);
+  const x = ((_tv.x + 1) / 2) * innerWidth, y = ((1 - _tv.y) / 2) * innerHeight;
+  if (x < 0 || x > innerWidth || y < 0 || y > innerHeight || _tv.z > 1) return null;
+  return { x: x - size / 2, y: y - size / 2, w: size, h: size };
+}
+
+let tourActive = null;
+function placeTour(r) {
+  const pad = 8, ring = $('#tour .tour-ring'), card = $('#tour .tour-card');
+  const R = { x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 };
+  Object.assign(ring.style, { left: `${R.x}px`, top: `${R.y}px`, width: `${R.w}px`, height: `${R.h}px`, borderRadius: R.w === R.h ? '50%' : '22px' });
+  const cw = card.offsetWidth, ch = card.offsetHeight, gap = 16;
+  let top = R.y + R.h / 2 > innerHeight / 2 ? R.y - ch - gap : R.y + R.h + gap;
+  top = clamp(top, 12, innerHeight - ch - 12);
+  const left = clamp(R.x + R.w / 2 - cw / 2, 16, innerWidth - cw - 16);
+  Object.assign(card.style, { left: `${left}px`, top: `${top}px` });
+}
+
+/** Muestra los pasos en orden; los que no se pueden señalar (no visibles) se saltan. */
+function runTour(key, steps) {
+  if (tourActive) return Promise.resolve();
+  const live = steps.filter((s) => s.rect());
+  if (!live.length) return Promise.resolve();
+  const tour = $('#tour');
+  tour.hidden = false;
+  let i = 0;
+  return new Promise((resolve) => {
+    const show = () => {
+      const s = live[i];
+      const r = s.rect();
+      if (!r) { next(); return; }
+      tour.querySelector('h3').textContent = s.title;
+      tour.querySelector('p').textContent = s.text;
+      tour.querySelector('.tour-dots').innerHTML = live.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
+      $('#tour-next').textContent = i === live.length - 1 ? '¡Entendido!' : 'Siguiente';
+      placeTour(r);
+    };
+    const end = () => {
+      tour.hidden = true;
+      tourActive = null;
+      settings.tours = { ...(settings.tours || {}), [key]: true };
+      saveSettings();
+      $('#tour-next').onclick = $('#tour-skip').onclick = null;
+      resolve();
+    };
+    const next = () => { if (++i >= live.length) end(); else show(); };
+    tourActive = { show };
+    $('#tour-next').onclick = next;
+    $('#tour-skip').onclick = end;
+    show();
+  });
+}
+window.addEventListener('resize', () => { if (tourActive) setTimeout(() => tourActive?.show(), 120); });
+
+function runLibraryTour() {
+  return runTour('lib', [
+    {
+      title: 'Tu colección', text: 'Desliza a los lados para ver tus discos. Toca la funda del centro para ponerla en el tocadiscos.',
+      rect: () => (albums.length ? rectOfWorld(albums[centerIndex()]._sleeve, Math.min(innerWidth, innerHeight) * 0.5) : null),
+    },
+    { title: 'Poner disco', text: 'Lleva el disco del centro al tocadiscos.', rect: () => (albums.length ? rectOf('#btn-put') : null) },
+    { title: 'Añadir discos', text: 'Busca álbumes, singles y discos en solitario para tu colección.', rect: () => rectOf('#btn-add') },
+    { title: 'Ajustes', text: 'Cambia colores y tema, cómo se reproduce la música y mucho más.', rect: () => rectOf('#btn-settings') },
+  ]);
+}
+function runPlayerTour() {
+  return runTour('player', [
+    { title: 'El brazo', text: 'Arrástralo sobre el disco para empezar, o para saltar a otra parte del álbum. Llévalo a su soporte para parar.', rect: () => rectOfWorld(head, 110) },
+    { title: 'Reproducir y pausar', text: 'También puedes usar ▶. Al pausar, la aguja se levanta del disco.', rect: () => rectOf('#btn-play') },
+    { title: 'Temporizador', text: 'Toca la luna para que el disco se detenga solo al cabo de un rato.', rect: () => rectOf('#btn-sleep') },
+    { title: 'Volver a tu colección', text: 'Toca «Biblioteca» o la funda que está junto al tocadiscos.', rect: () => rectOf('#btn-back') },
+  ]);
+}
+$('#st-tour').addEventListener('click', async () => {
+  settings.tours = {};
+  saveSettings();
+  closeSettings();
+  await sleep(400);
+  if (mode === 'library') runLibraryTour();
+  else if (mode === 'player') runPlayerTour();
+});
+
+// ============================================================
 // Bucle principal
 // ============================================================
+// ---------- calidad gráfica adaptable ----------
+// Equipos modestos (pocos núcleos, poca memoria o pantallas muy densas) empiezan con menos resolución;
+// en "Automática" se ajusta además según los FPS reales.
+const dpr = window.devicePixelRatio || 1;
+const modest = (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3;
+let pixelRatio = 0, appliedQuality = '', fpsFrames = 0, fpsTime = 0, fpsGood = 0;
+function maxRatio() { return settings.quality === 'low' ? Math.min(dpr, 1.25) : Math.min(dpr, 2); }
+function setShadowSize(n) {
+  for (const l of [key, carLight]) {
+    if (l.shadow.mapSize.x === n) continue;
+    l.shadow.mapSize.set(n, n);
+    l.shadow.map?.dispose();
+    l.shadow.map = null; // se recrea con el nuevo tamaño
+  }
+}
+function applyQuality() {
+  if (appliedQuality === settings.quality) return;
+  appliedQuality = settings.quality;
+  pixelRatio = settings.quality === 'auto' && modest ? Math.min(dpr, 1.5) : maxRatio();
+  setShadowSize(settings.quality === 'low' ? 1024 : 2048);
+  renderer.setPixelRatio(pixelRatio);
+  renderer.setSize(innerWidth, innerHeight, false);
+}
+function adaptQuality(dt) {
+  if (settings.quality !== 'auto' || document.hidden) return;
+  fpsFrames++; fpsTime += dt;
+  if (fpsTime < 2) return;
+  const fps = fpsFrames / fpsTime;
+  fpsFrames = 0; fpsTime = 0;
+  let next = pixelRatio;
+  if (fps < 40 && pixelRatio > 1) { next = Math.max(1, pixelRatio - 0.25); fpsGood = 0; }
+  else if (fps > 57 && ++fpsGood >= 4 && pixelRatio < maxRatio()) { next = Math.min(maxRatio(), pixelRatio + 0.25); fpsGood = 0; }
+  if (next !== pixelRatio) {
+    pixelRatio = next;
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(innerWidth, innerHeight, false);
+  }
+}
+
 function onResize() {
   renderer.setSize(innerWidth, innerHeight, false);
+  panelBox = null; // se vuelve a medir con el nuevo tamaño u orientación
 }
 window.addEventListener('resize', onResize);
 
@@ -1515,6 +1808,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   clock += dt;
+  adaptQuality(dt);
   updateTweens(dt);
   updateCarousel(dt);
   updateDeck(dt);
@@ -1532,7 +1826,8 @@ async function start() {
   } catch (e) {
     console.error(e);
     toast('No se pudo abrir el almacenamiento local; los cambios no se guardarán.');
-    albums = DEFAULT_ALBUMS.map((a, i) => ({ id: 'bts-' + a.slug, title: a.title, artist: 'BTS', year: a.year, vinyl: a.vinyl, palette: a.palette, order: i, tracks: [], cover: null }));
+    albums = [];
+    firstRun = true;
   }
   for (const a of albums) {
     // canciones de las ediciones físicas que faltan (lista verificada en extras.js)
@@ -1548,7 +1843,10 @@ async function start() {
   updateLibInfo();
   requestAnimationFrame((t) => { last = t; frame(t); });
   setTimeout(() => $('#loading').classList.add('done'), 150);
-  // la primera vez, intenta traer las portadas reales automáticamente
+  // primera vez: bienvenida para elegir discos; si no, el tutorial (una sola vez)
+  if ((firstRun || !albums.length) && !settings.welcomed) { setTimeout(showWelcome, 500); return; }
+  if (!settings.tours?.lib) setTimeout(() => { if (mode === 'library') runLibraryTour(); }, 1200);
+  // intenta traer las portadas reales de los álbumes que aún no las tienen
   try {
     if (!(await db.get('meta', 'catalogAuto')) || addedDefaults) {
       await sleep(1200);
